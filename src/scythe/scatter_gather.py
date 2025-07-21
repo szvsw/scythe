@@ -305,7 +305,7 @@ ResultDataContent = TypeVar("ResultDataContent")
 def sift_results(
     spec_data: list[ZipDataContent],
     results: list[ResultDataContent | BaseException],
-) -> tuple[list[ResultDataContent], pd.DataFrame]:
+) -> tuple[list[ResultDataContent], pd.DataFrame | None]:
     """Sift results into safe and errored results.
 
     Args:
@@ -325,8 +325,10 @@ def sift_results(
     error_multi_index = pd.MultiIndex.from_frame(
         pd.DataFrame([r.model_dump(mode="json") for r in error_specs])
     )
-    error_df = pd.DataFrame(
-        {"missing": [False], "msg": error_msgs}, index=error_multi_index
+    error_df = (
+        pd.DataFrame({"missing": [False], "msg": error_msgs}, index=error_multi_index)
+        if error_specs
+        else None
     )
     return safe_results, error_df
 
