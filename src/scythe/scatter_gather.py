@@ -14,6 +14,7 @@ from pydantic import AnyUrl, BaseModel, Field, field_validator, model_validator
 from scythe.base import BaseSpec, ExperimentInputSpec, ExperimentOutputSpec
 from scythe.hatchet import hatchet
 from scythe.registry import ExperimentRegistry, ExperimentStandaloneType, TOutput
+from scythe.storage import storage_settings
 from scythe.utils.filesys import fetch_uri
 from scythe.utils.results import save_and_upload_parquets, transpose_dataframe_dict
 
@@ -84,7 +85,10 @@ class ScatterGatherInput(BaseSpec):
 
     task_name: str = Field(..., description="The name of the Hatchet task to run.")
     specs_path: AnyUrl = Field(..., description="The path to the specs to run.")
-    bucket: str = Field(..., description="The name of the S3 bucket to use.")
+    bucket: str | None = Field(None, description="The name of the S3 bucket to use.")
+    bucket_prefix: str | None = Field(
+        None, description="The prefix to use for the S3 bucket."
+    )
     recursion_map: RecursionMap = Field(..., description="The recursion map to use.")
     save_errors: bool = Field(default=False, description="Whether to save errors.")
 
@@ -97,7 +101,8 @@ class ScatterGatherInput(BaseSpec):
         suffix: str,
     ) -> str:
         """Cosntruct an output key for the scatter gather workflow."""
-        output_key_base = f"hatchet/{self.experiment_id}/{mode}"
+        bucket_prefix = self.bucket_prefix or storage_settings.BUCKET_PREFIX
+        output_key_base = f"{bucket_prefix}/{self.experiment_id}/{mode}"
         output_results_dir = (
             f"recurse/{len(self.recursion_map.path)}"
             if self.recursion_map.path
@@ -181,7 +186,7 @@ class ScatterGatherInput(BaseSpec):
                     filename: specs_as_df,
                 },
                 s3=s3,
-                bucket=self.bucket,
+                bucket=self.bucket or storage_settings.BUCKET,
                 output_key_constructor=partial(
                     self.construct_filekey,
                     mode="input",
@@ -193,6 +198,7 @@ class ScatterGatherInput(BaseSpec):
                 experiment_id=self.experiment_id,
                 task_name=self.task_name,
                 bucket=self.bucket,
+                bucket_prefix=self.bucket_prefix,
                 specs_path=uris[filename],
                 recursion_map=recursion_map,
             )
@@ -281,7 +287,7 @@ async def scatter_gather(
     uris = save_and_upload_parquets(
         collected_dfs=transposed_dfs,
         s3=s3,
-        bucket=payload.bucket,
+        bucket=payload.bucket or storage_settings.BUCKET,
         output_key_constructor=output_key_constructor,
         save_errors=payload.save_errors,
     )
