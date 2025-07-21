@@ -8,10 +8,15 @@ from typing import TYPE_CHECKING
 import boto3
 import pandas as pd
 import yaml
-from hatchet_sdk import TriggerWorkflowOptions
+from hatchet_sdk import TaskRunRef, TriggerWorkflowOptions
 
 from scythe.registry import Standalone, TInput, TOutput
-from scythe.scatter_gather import RecursionMap, ScatterGatherInput, scatter_gather
+from scythe.scatter_gather import (
+    RecursionMap,
+    ScatterGatherInput,
+    ScatterGatherResult,
+    scatter_gather,
+)
 from scythe.storage import ScytheStorageSettings
 from scythe.utils.results import save_and_upload_parquets
 
@@ -23,7 +28,9 @@ else:
 s3 = boto3.client("s3")
 
 
-# TODO: consider facting this into a an ExperimentRun Class
+# TODO: consider factoring this into a an ExperimentRun Class
+# which ought to include things like artifact location,
+# automatically uploading referenced artifacts, etc.
 def allocate_experiment(
     experiment_id: str,
     experiment: Standalone[TInput, TOutput],
@@ -32,7 +39,7 @@ def allocate_experiment(
     construct_filekey: Callable[[str], str] | None = None,
     storage_settings: ScytheStorageSettings | None = None,
     s3_client: S3Client | None = None,
-):
+) -> TaskRunRef[ScatterGatherInput, ScatterGatherResult]:
     """Allocate an experiment to a workflow run."""
     s3_client = s3_client or s3
     storage_settings = storage_settings or ScytheStorageSettings()
