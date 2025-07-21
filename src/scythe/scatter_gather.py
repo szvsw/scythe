@@ -14,7 +14,7 @@ from pydantic import AnyUrl, BaseModel, Field, field_validator, model_validator
 from scythe.base import BaseSpec, ExperimentInputSpec, ExperimentOutputSpec
 from scythe.hatchet import hatchet
 from scythe.registry import ExperimentRegistry, ExperimentStandaloneType, TOutput
-from scythe.storage import storage_settings
+from scythe.storage import ScytheStorageSettings
 from scythe.utils.filesys import fetch_uri
 from scythe.utils.results import save_and_upload_parquets, transpose_dataframe_dict
 
@@ -101,7 +101,7 @@ class ScatterGatherInput(BaseSpec):
         suffix: str,
     ) -> str:
         """Cosntruct an output key for the scatter gather workflow."""
-        bucket_prefix = self.bucket_prefix or storage_settings.BUCKET_PREFIX
+        bucket_prefix = self.bucket_prefix or ScytheStorageSettings().BUCKET_PREFIX
         output_key_base = f"{bucket_prefix}/{self.experiment_id}/{mode}"
         output_results_dir = (
             f"recurse/{len(self.recursion_map.path)}"
@@ -186,7 +186,7 @@ class ScatterGatherInput(BaseSpec):
                     filename: specs_as_df,
                 },
                 s3=s3,
-                bucket=self.bucket or storage_settings.BUCKET,
+                bucket=self.bucket or ScytheStorageSettings().BUCKET,
                 output_key_constructor=partial(
                     self.construct_filekey,
                     mode="input",
@@ -287,7 +287,7 @@ async def scatter_gather(
     uris = save_and_upload_parquets(
         collected_dfs=transposed_dfs,
         s3=s3,
-        bucket=payload.bucket or storage_settings.BUCKET,
+        bucket=payload.bucket or ScytheStorageSettings().BUCKET,
         output_key_constructor=output_key_constructor,
         save_errors=payload.save_errors,
     )

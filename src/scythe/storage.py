@@ -11,6 +11,3 @@ class ScytheStorageSettings(BaseSettings, env_prefix="SCYTHE_STORAGE_"):
     BUCKET_PREFIX: str = Field(
         default="scythe", description="The prefix to use for the S3 bucket."
     )
-
-
-storage_settings = ScytheStorageSettings()
