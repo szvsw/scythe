@@ -57,7 +57,7 @@ extra:
     - icon: fontawesome/brands/github
       link: https://github.com/szvsw/scythe
     - icon: fontawesome/brands/python
-      link: https://pypi.org/project/scythe-py
+      link: https://pypi.org/project/scythe-engine
 
 markdown_extensions:
   - toc:
