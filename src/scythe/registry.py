@@ -85,6 +85,7 @@ class ExperimentRegistry:
         """Make a standalone experiment from a function."""
         # get the type of the first argument of fn
         input_type = cast(type[TInput], get_type_hints(fn)["input_spec"])
+        return_type = cast(type[TOutput], get_type_hints(fn)["return"])
 
         fn_name = fn.__name__
         fn_doc = fn.__doc__
@@ -100,7 +101,7 @@ class ExperimentRegistry:
             retries=retries,
             **task_config,
         )
-        def task(input_: input_type, context: Context) -> TOutput:  # pyright: ignore [reportInvalidTypeForm]
+        def task(input_: input_type, context: Context) -> return_type:  # pyright: ignore [reportInvalidTypeForm]
             """The task implementation."""
             input_.log = lambda msg: context.log(msg)
             return fn(input_)
@@ -120,3 +121,6 @@ class ExperimentRegistry:
     def experiments(cls) -> list[ExperimentStandaloneType]:
         """Get all experiments."""
         return list(cls._experiments_dict.values())
+
+
+# if __name__ == "__main__":

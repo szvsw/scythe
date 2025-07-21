@@ -156,15 +156,6 @@ class ScatterGatherInput(BaseSpec):
         # we can't associate specific results (or errors) with specific results
         results = await self.standalone.aio_run_many(inputs, return_exceptions=True)
         safe_results, error_df = sift_results(specs, results)
-        for res in safe_results:
-            print("-------")
-            print("-------")
-            print("-------")
-            print(f"{type(self.standalone._output_validator)=}")
-            print("-------")
-            print(f"{type(res)=}")
-            print("-------")
-            print(f"{res=}")
         result = combine_experiment_outputs(safe_results)
         return GatheredExperimentRuns(
             success=result,
