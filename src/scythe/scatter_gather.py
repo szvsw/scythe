@@ -7,10 +7,9 @@ from typing import TYPE_CHECKING, Literal, TypeVar, cast
 
 import boto3
 import pandas as pd
-from gotrue import BaseModel
 from hatchet_sdk import Context, TriggerWorkflowOptions
 from hatchet_sdk.clients.admin import WorkflowRunTriggerConfig
-from pydantic import AnyUrl, Field, field_validator, model_validator
+from pydantic import AnyUrl, BaseModel, Field, field_validator, model_validator
 
 from scythe.base import BaseSpec, ExperimentInputSpec, ExperimentOutputSpec
 from scythe.hatchet import hatchet
