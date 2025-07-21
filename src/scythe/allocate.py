@@ -1,7 +1,7 @@
 """Allocate an experiment to a workflow run."""
 
 import tempfile
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -28,13 +28,25 @@ else:
 s3 = boto3.client("s3")
 
 
+class ExperimentSpecsMismatchError(Exception):
+    """An error raised when the specs for an experiment do not match the expected type."""
+
+    def __init__(self, expected_type: type, actual_type: type):
+        """Initialize the error."""
+        self.expected_type = expected_type
+        self.actual_type = actual_type
+        super().__init__(
+            f"Expected type {expected_type.__name__}, got {actual_type.__name__}."
+        )
+
+
 # TODO: consider factoring this into a an ExperimentRun Class
 # which ought to include things like artifact location,
 # automatically uploading referenced artifacts, etc.
 def allocate_experiment(
     experiment_id: str,
     experiment: Standalone[TInput, TOutput],
-    specs: list[TInput],
+    specs: Sequence[TInput],
     recursion_map: RecursionMap | None = None,
     construct_filekey: Callable[[str], str] | None = None,
     storage_settings: ScytheStorageSettings | None = None,
@@ -43,6 +55,17 @@ def allocate_experiment(
     """Allocate an experiment to a workflow run."""
     s3_client = s3_client or s3
     storage_settings = storage_settings or ScytheStorageSettings()
+
+    mismatching_types = [
+        type(spec)
+        for spec in specs
+        if not isinstance(spec, experiment.config.input_validator)
+    ]
+    if mismatching_types:
+        raise ExperimentSpecsMismatchError(
+            expected_type=experiment.config.input_validator,
+            actual_type=mismatching_types[0],
+        )
     for spec in specs:
         spec.experiment_id = experiment_id
     df = pd.DataFrame([s.model_dump(mode="json") for s in specs])
