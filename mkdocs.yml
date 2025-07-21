@@ -1,0 +1,66 @@
+site_name: Scythe
+repo_url: https://github.com/szvsw/scythe
+site_url: https://szvsw.github.io/scythe
+site_description: This is a repository for managing embarassingly parallel experiments with Hatchet.
+site_author: Sam Wolk
+edit_uri: edit/main/docs/
+repo_name: szvsw/scythe
+copyright: Maintained by <a href="https://github.com/szvsw">Sam Wolk</a>.
+
+nav:
+  - Home: index.md
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          setup_commands:
+            - import sys
+            - sys.path.append('../')
+          options:
+            show_source: false
+theme:
+  name: material
+  feature:
+    tabs: true
+  features:
+    # - toc.follow
+    # - toc.integrate
+    - navigation.top
+    - navigation.path
+    - navigation.indexes
+    - navigation.sections
+    - navigation.tracking
+    - navigation.instant
+    - navigation.instant.prefetch
+    - navigation.instant.progress
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: white
+      accent: deep orange
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: black
+      accent: deep orange
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  icon:
+    repo: fontawesome/brands/github
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/szvsw/scythe
+    - icon: fontawesome/brands/python
+      link: https://pypi.org/project/scythe-py
+
+markdown_extensions:
+  - toc:
+      permalink: "#"
+  - pymdownx.arithmatex:
+      generic: true
