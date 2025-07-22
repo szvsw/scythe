@@ -3,7 +3,7 @@
 import tempfile
 from functools import cached_property, partial
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal, TypeVar, cast
+from typing import TYPE_CHECKING, Literal, TypeVar
 
 import boto3
 import pandas as pd
@@ -124,19 +124,8 @@ class ScatterGatherInput(BaseSpec):
         local_path = self.fetch_uri(self.specs_path, use_cache=True)
         df = pd.read_parquet(local_path)
         specs_dicts = df.to_dict(orient="records")
-        # TODO: replace with standalone.validator once Hatchet pr is merged
-        # validator = self.standalone.input_validator
-        validator = cast(
-            type[ExperimentInputSpec], self.standalone.config.input_validator
-        )
-        return [
-            validator.model_validate({
-                **spec,
-                "sort_index": i,
-                "experiment_id": self.experiment_id,
-            })
-            for i, spec in enumerate(specs_dicts)
-        ]
+        validator = self.standalone.input_validator
+        return [validator.model_validate(spec) for spec in specs_dicts]
 
     async def run_experiments(
         self,

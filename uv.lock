@@ -1053,7 +1053,7 @@ wheels = [
 
 [[package]]
 name = "hatchet-sdk"
-version = "1.16.0"
+version = "1.16.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohttp" },
@@ -1070,9 +1070,9 @@ dependencies = [
     { name = "tenacity" },
     { name = "urllib3" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/76/19/d7677c6c0505919de2ecc2a82734b60303d22770402191b94ffa5520a1da/hatchet_sdk-1.16.0.tar.gz", hash = "sha256:2a8009cac96735b0ade5e6f232d8907574285cdfa119c657f16fbfb7280ceaa6", size = 332882, upload_time = "2025-07-17T18:06:12.793Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/fb/f5/25b46bb33bcbca1705bebe7022733dc035503489ee042ed838d7e0b67266/hatchet_sdk-1.16.2.tar.gz", hash = "sha256:b7d4b29979f27a7fccc3b1e2a9987eb115a7e4cbb77aa4c914fc7da4aa87ad74", size = 335894, upload_time = "2025-07-22T15:23:25.922Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/9c/10/0c5631c1701f8cef693a957c7ebefb04d1e451225b6cb22515f079ac48fd/hatchet_sdk-1.16.0-py3-none-any.whl", hash = "sha256:8f94bf1e1755f70eaeafaac9134d554cdd6057d45f0ba5200f23efe78773101c", size = 813885, upload_time = "2025-07-17T18:06:10.908Z" },
+    { url = "https://files.pythonhosted.org/packages/ad/f3/c3b9fbd1a62fc1d7cec2d3f3a987cc28e570fd8007aaf497b648fb09c92d/hatchet_sdk-1.16.2-py3-none-any.whl", hash = "sha256:f4e4716ec7ed0d1e8a730699b33ad59830a6b143d73151591c08a08b8fe2d803", size = 826094, upload_time = "2025-07-22T15:23:24.456Z" },
 ]
 
 [[package]]
@@ -3065,7 +3065,7 @@ wheels = [
 
 [[package]]
 name = "scythe-engine"
-version = "0.0.13"
+version = "0.0.14"
 source = { editable = "." }
 dependencies = [
     { name = "boto3" },
