@@ -52,5 +52,4 @@ to get an idea of what using Scythe with Hatchet looks like.
 - Start documenting
 - ExperimentRun class
 - Results downloaders
-- More extensible results patterns
 - Automatic local artifact conversion to cloud artifacts
