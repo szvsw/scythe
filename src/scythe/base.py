@@ -2,9 +2,10 @@
 
 import importlib
 import importlib.resources
+import json
 import logging
 from pathlib import Path
-from typing import cast
+from typing import Any, cast
 
 import pandas as pd
 from pydantic import AnyUrl, BaseModel, Field, field_serializer, field_validator
@@ -76,6 +77,40 @@ class BaseSpec(BaseModel, extra="allow", arbitrary_types_allowed=True):
         return fetch_uri(uri, local_path, use_cache, self.log)
 
 
+class ExperimentIndexNotSerializableError(Exception):
+    """An error for when an experiment index is not serializable."""
+
+    def __init__(self, cls: type[BaseModel]):
+        """Initialize the error."""
+        self.cls = cls
+        super().__init__(f"Index data is not serializable as json: {cls.__name__}")
+
+
+class ExperimentIndexAdditionalDataDoesNotMatchNRowsError(Exception):
+    """An error for when the additional index data does not match the number of rows."""
+
+    def __init__(
+        self, n_rows: int, additional_index_data: dict[str, Any] | list[dict[str, Any]]
+    ):
+        """Initialize the error."""
+        self.n_rows = n_rows
+        self.additional_index_data = additional_index_data
+        super().__init__(
+            f"Additional index data does not match the number of rows: {n_rows} != {len(additional_index_data)}"
+        )
+
+
+class ExperimentIndexAdditionalDataOverlapsWithSpecError(Exception):
+    """An error for when the additional index data overlaps with the spec."""
+
+    def __init__(self, overlapping_keys: list[str]):
+        """Initialize the error."""
+        self.overlapping_keys = overlapping_keys
+        super().__init__(
+            f"Additional index data overlaps with the spec: {overlapping_keys}"
+        )
+
+
 class ExperimentInputSpec(BaseSpec):
     """A spec for running a leaf workflow."""
 
@@ -87,12 +122,80 @@ class ExperimentInputSpec(BaseSpec):
         default=None, description="The root workflow run id of the leaf."
     )
 
+    def make_multiindex(
+        self,
+        additional_index_data: dict[str, Any] | list[dict[str, Any]] | None = None,
+        n_rows: int = 1,
+        include_sort_subindex: bool = True,
+    ) -> pd.MultiIndex:
+        """Make a MultiIndex from the Spec, and any other methods which might create index data.
+
+        Note that index data should generally be considered as features or inputs, rather than outputs.
+
+        TODO: Feel free to add more args to this method if more values need to be computed.
+
+        Returns:
+            multi_index (pd.MultiIndex): The MultiIndex.
+        """
+        if isinstance(additional_index_data, list) and n_rows != len(
+            additional_index_data
+        ):
+            raise ExperimentIndexAdditionalDataDoesNotMatchNRowsError(
+                n_rows, additional_index_data
+            )
+
+        index_data: list[dict[str, Any]] = [
+            self.model_dump(mode="json") for _ in range(n_rows)
+        ]
+
+        if isinstance(additional_index_data, dict):
+            if any(k in self.model_dump(mode="json") for k in additional_index_data):
+                overlapping_keys = [
+                    k
+                    for k in additional_index_data
+                    if k in self.model_dump(mode="json")
+                ]
+                raise ExperimentIndexAdditionalDataOverlapsWithSpecError(
+                    overlapping_keys
+                )
+            for d in index_data:
+                d.update(additional_index_data)
+
+        elif isinstance(additional_index_data, list):
+            for d, ad in zip(index_data, additional_index_data, strict=True):
+                if any(k in d for k in ad):
+                    overlapping_keys = [k for k in ad if k in d]
+                    raise ExperimentIndexAdditionalDataOverlapsWithSpecError(
+                        overlapping_keys
+                    )
+                d.update(ad)
+
+        try:
+            json.dumps(index_data)
+        except Exception as e:
+            raise ExperimentIndexNotSerializableError(self.__class__) from e
+
+        df = pd.DataFrame(index_data)
+        if include_sort_subindex and n_rows > 1:
+            df["sort_subindex"] = list(range(n_rows))
+
+        return pd.MultiIndex.from_frame(df)
+
+
+class ScalarInDataframesError(Exception):
+    """An error for when a scalar is in the dataframes."""
+
+    def __init__(self, scalar: Any):
+        """Initialize the error."""
+        self.scalar = scalar
+        super().__init__("`scalars` key is already in `dataframes`")
+
 
 class ExperimentOutputSpec(BaseModel, arbitrary_types_allowed=True):
     """A spec for the output of a leaf workflow."""
 
     # TODO: make this extensible with scalar columns
-    dataframes: dict[str, pd.DataFrame]
+    dataframes: dict[str, pd.DataFrame] = Field(default_factory=dict)
 
     @field_validator("dataframes", mode="before")
     def validate_dataframes(cls, v):
@@ -112,3 +215,14 @@ class ExperimentOutputSpec(BaseModel, arbitrary_types_allowed=True):
     def serialize_dataframes(self, v):
         """Serialize the dataframes via serialization."""
         return serialize_df_dict(v)
+
+    def add_scalars(self, input_spec: ExperimentInputSpec):
+        """Update the dataframes with the input spec."""
+        results = [self.model_dump(mode="json", exclude={"dataframes"})]
+        multi_index = input_spec.make_multiindex(
+            results, n_rows=1, include_sort_subindex=False
+        )
+        df = pd.DataFrame(results, index=multi_index)
+        if "scalars" in self.dataframes:
+            raise ScalarInDataframesError(self.dataframes["scalars"])
+        self.dataframes["scalars"] = df

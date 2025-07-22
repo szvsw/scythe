@@ -117,7 +117,9 @@ class ExperimentRegistry:
                     input_.log = lambda msg: context.log(msg)
                 if inject_workflow_run_id:
                     input_.workflow_run_id = context.workflow_run_id
-                return fn(input_)
+                output = fn(input_)
+                output.add_scalars(input_)
+                return output
 
             if worker:
                 worker.register_workflow(task)
