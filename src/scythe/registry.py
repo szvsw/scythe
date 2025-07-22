@@ -71,7 +71,6 @@ class ExperimentRegistry:
     @classmethod
     def Register(
         cls,
-        fn: ExperimentFunction[TInput, TOutput],
         *,
         worker: Worker | None = None,
         description: str | None = None,
@@ -80,35 +79,51 @@ class ExperimentRegistry:
         schedule_timeout: Duration = timedelta(minutes=5),
         execution_timeout: Duration = timedelta(minutes=1),
         retries: int = 1,
+        overwrite_log_method: bool = True,
+        inject_workflow_run_id: bool = True,
         **task_config,
-    ) -> ExperimentStandaloneType:
-        """Make a standalone experiment from a function."""
-        # get the type of the first argument of fn
-        input_type = cast(type[TInput], get_type_hints(fn)["input_spec"])
-        return_type = cast(type[TOutput], get_type_hints(fn)["return"])
+    ):
+        """Decorator to make a standalone experiment from a function.
 
-        fn_name = fn.__name__
-        fn_doc = fn.__doc__
+        Usage:
+            @ExperimentRegistry.Register(description="desc", ...)
+            def my_experiment(input_spec: MyInput) -> MyOutput:
+                ...
+        """
 
-        @cls.Include
-        @hatchet.task(
-            name=name or f"scythe_experiment_{fn_name}",
-            description=description or f"{fn_doc}",
-            input_validator=input_type,
-            desired_worker_labels=desired_worker_labels,
-            schedule_timeout=schedule_timeout,
-            execution_timeout=execution_timeout,
-            retries=retries,
-            **task_config,
-        )
-        def task(input_: input_type, context: Context) -> return_type:  # pyright: ignore [reportInvalidTypeForm]
-            """The task implementation."""
-            input_.log = lambda msg: context.log(msg)
-            return fn(input_)
+        def decorator(
+            fn: ExperimentFunction[TInput, TOutput],
+        ) -> ExperimentStandaloneType:
+            input_type = cast(type[TInput], get_type_hints(fn)["input_spec"])
+            return_type = cast(type[TOutput], get_type_hints(fn)["return"])
 
-        if worker:
-            worker.register_workflow(task)
-        return task
+            fn_name = fn.__name__
+            fn_doc = fn.__doc__
+
+            @cls.Include
+            @hatchet.task(
+                name=name or f"scythe_experiment_{fn_name}",
+                description=description or f"{fn_doc}",
+                input_validator=input_type,
+                desired_worker_labels=desired_worker_labels,
+                schedule_timeout=schedule_timeout,
+                execution_timeout=execution_timeout,
+                retries=retries,
+                **task_config,
+            )
+            def task(input_: input_type, context: Context) -> return_type:  # pyright: ignore [reportInvalidTypeForm]
+                """The task implementation."""
+                if overwrite_log_method:
+                    input_.log = lambda msg: context.log(msg)
+                if inject_workflow_run_id:
+                    input_.workflow_run_id = context.workflow_run_id
+                return fn(input_)
+
+            if worker:
+                worker.register_workflow(task)
+            return task
+
+        return decorator
 
     @classmethod
     def get_experiment(cls, name: str) -> ExperimentStandaloneType:

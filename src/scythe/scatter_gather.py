@@ -61,6 +61,11 @@ class RecursionMap(BaseModel):
         default=10, description="The maximum depth of the recursion", ge=0, le=10
     )
 
+    @property
+    def is_root(self) -> bool:
+        """Check if the recursion map is the root."""
+        return len(self.path or []) == 0
+
     @field_validator("path", mode="before")
     @classmethod
     def validate_path_is_length_ge_1(cls, values):
@@ -126,6 +131,12 @@ class ScatterGatherInput(BaseSpec):
         specs_dicts = df.to_dict(orient="records")
         validator = self.standalone.input_validator
         return [validator.model_validate(spec) for spec in specs_dicts]
+
+    def add_root_workflow_run_id(self, root_workflow_run_id: str) -> None:
+        """Add the root workflow run id to the specs."""
+        if self.recursion_map.is_root:
+            for spec in self.specs:
+                spec.root_workflow_run_id = root_workflow_run_id
 
     async def run_experiments(
         self,
@@ -250,6 +261,7 @@ async def scatter_gather(
     ctx: Context,
 ) -> ScatterGatherResult:
     """Run the scatter gather workflow."""
+    payload.add_root_workflow_run_id(ctx.workflow_run_id)
     if payload.is_base_case:
         experiment_output = await payload.run_experiments()
         experiment_outputs = [experiment_output]

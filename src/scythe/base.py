@@ -80,6 +80,12 @@ class ExperimentInputSpec(BaseSpec):
     """A spec for running a leaf workflow."""
 
     sort_index: int = Field(..., description="The sort index of the leaf.", ge=0)
+    workflow_run_id: str | None = Field(
+        default=None, description="The workflow run id of the leaf."
+    )
+    root_workflow_run_id: str | None = Field(
+        default=None, description="The root workflow run id of the leaf."
+    )
 
 
 class ExperimentOutputSpec(BaseModel, arbitrary_types_allowed=True):
