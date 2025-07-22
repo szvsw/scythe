@@ -131,7 +131,7 @@ class ScytheWorkerConfig(BaseSettings, env_prefix="SCYTHE_WORKER_"):
     def start(self, experiments: list[ExperimentFunction] | None = None) -> None:
         """Make a worker."""
         for experiment in experiments or []:
-            ExperimentRegistry.Register(experiment)
+            ExperimentRegistry.Register()(experiment)
 
         worker = hatchet.worker(
             name=self.computed_name,
