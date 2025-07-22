@@ -111,6 +111,7 @@ class ExperimentIndexAdditionalDataOverlapsWithSpecError(Exception):
         )
 
 
+# TODO: consider making the payload a generic?
 class ExperimentInputSpec(BaseSpec):
     """A spec for running a leaf workflow."""
 
