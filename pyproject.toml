@@ -1,6 +1,6 @@
 [project]
 name = "scythe-engine"
-version = "0.0.17"
+version = "0.0.18"
 description = "This is a repository for managing embarassingly parallel experiments with Hatchet."
 authors = [
     { name = "Sam Wolk", email = "mail@samwolk.info" }
