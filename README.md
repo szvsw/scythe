@@ -31,8 +31,8 @@ outputs) while automating the boring but necessary work to run millions of simul
 serializing data to and from cloud buckets, configuring queues, etc).
 
 There are of course lots of data engineering orchestration tools out there already, but this
-is a bit more lightweight and hopefully a little simpler to use, at the expense of less things
-like (for now) not robustly tracking data lineage, etc. Somet
+is a bit more lightweight and hopefully a little simpler to use, at the expense of fewer bells and whistles (for now)
+like robust dataset lineage, etc.
 
 [Hatchet](https://hatchet.run) is already very easy (and fun!) to use for newcomers to
 distributed computing, so I recommend checking out their docs - you might be better off
