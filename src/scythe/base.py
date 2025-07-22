@@ -218,7 +218,10 @@ class ExperimentOutputSpec(BaseModel, arbitrary_types_allowed=True):
 
     def add_scalars(self, input_spec: ExperimentInputSpec):
         """Update the dataframes with the input spec."""
-        results = [self.model_dump(mode="json", exclude={"dataframes"})]
+        scalar_data = self.model_dump(mode="json", exclude={"dataframes"})
+        if len(scalar_data) == 0:
+            return
+        results = [scalar_data]
         multi_index = input_spec.make_multiindex(
             results, n_rows=1, include_sort_subindex=False
         )
