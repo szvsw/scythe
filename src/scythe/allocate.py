@@ -183,7 +183,7 @@ def allocate_experiment(  # noqa: C901
     class ExperimentIO(BaseModel):
         """The input and output schema for the experiment."""
 
-        input: input_validator = Field(
+        input: input_validator = Field(  # pyright: ignore [reportInvalidTypeForm]
             default=..., description="The input for the experiment."
         )
         output: output_validator = Field(  # pyright: ignore [reportInvalidTypeForm]
