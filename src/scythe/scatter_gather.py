@@ -125,7 +125,7 @@ class ScatterGatherInput(BaseSpec):
         output_key_prefix = (
             f"{output_key_base}{mode_prefix}{recurse_prefix}{workflow_run_id_prefix}"
         )
-        return f"{output_key_prefix}/{filename}.{suffix}"
+        return f"{output_key_prefix}{filename}.{suffix}"
 
     @property
     def standalone(self) -> ExperimentStandaloneType:
