@@ -10,7 +10,7 @@ import boto3
 import pandas as pd
 import yaml
 from hatchet_sdk import TaskRunRef, TriggerWorkflowOptions
-from pydantic import FilePath
+from pydantic import BaseModel, Field, FilePath
 from tqdm import tqdm
 
 from scythe.base import S3Url
@@ -56,6 +56,22 @@ class DuplicateSourceFilesError(Exception):
             f"source files (i.e. multiple files with the same name but in different "
             "directories.) "
         )
+
+
+class SourceFileLocations(BaseModel):
+    """The locations of the source files for an experiment."""
+
+    files: dict[str, set[S3Url]]
+
+
+class ExperimentRunManifest(BaseModel):
+    """The manifest for an experiment run."""
+
+    workflow_run_id: str
+    experiment_id: str
+    experiment_name: str
+    io_spec: S3Url
+    source_files: S3Url | None = None
 
 
 # TODO: consider factoring this into a an ExperimentRun Class
@@ -110,8 +126,9 @@ def allocate_experiment(  # noqa: C901
                 raise DuplicateSourceFilesError(file_key, field_name)
             all_source_file_names.setdefault(field_name, set()).add(file_key)
 
+    source_files_s3_urls = None
     if at_least_one_source_file:
-        _source_files_s3_urls, source_files_s3_url_maps = upload_source_files(
+        source_files_s3_urls, source_files_s3_url_maps = upload_source_files(
             source_files, s3_client, storage_settings.BUCKET, construct_source_filekey
         )
         for spec in specs:
@@ -156,27 +173,78 @@ def allocate_experiment(  # noqa: C901
         ),
     )
     workflow_run_id = run_ref.workflow_run_id
+
+    input_validator = experiment.input_validator
+    output_validator = experiment._output_validator
+    if output_validator is None:
+        msg = "Output validator is not set for experiment"
+        raise ValueError(msg)
+
+    class ExperimentIO(BaseModel):
+        """The input and output schema for the experiment."""
+
+        input: input_validator = Field(
+            default=..., description="The input for the experiment."
+        )
+        output: output_validator = Field(  # pyright: ignore [reportInvalidTypeForm]
+            default=..., description="The output for the experiment."
+        )
+
+    schema = ExperimentIO.model_json_schema()
+
     with tempfile.TemporaryDirectory() as temp_dir:
         tdir = Path(temp_dir)
         manifest_path = tdir / "manifest.yml"
-        with open(manifest_path, "w") as f:
-            yaml.dump(
-                {
-                    "workflow_run_id": workflow_run_id,
-                    "experiment_id": experiment_id,
-                    "experiment_name": experiment.name,
-                },
-                f,
-                indent=2,
-            )
-        file_key = (
-            f"{storage_settings.BUCKET_PREFIX}/{experiment_id}/artifacts/manifest.yml"
-        )
+        io_path = tdir / "experiment_io_spec.yml"
+        source_files_path = tdir / "source_files.yml"
+
+        # dump and upload the schema
+        with open(io_path, "w") as f:
+            yaml.dump(schema, f, indent=2)
+        io_file_key = f"{storage_settings.BUCKET_PREFIX}/{experiment_id}/artifacts/experiment_io_spec.yml"
         s3_client.upload_file(
             Bucket=storage_settings.BUCKET,
-            Key=file_key,
+            Key=io_file_key,
+            Filename=io_path.as_posix(),
+        )
+
+        # dump and upload the source files
+        s3_source_files_key = f"{storage_settings.BUCKET_PREFIX}/{experiment_id}/artifacts/source_files.yml"
+        if source_files_s3_urls:
+            with open(source_files_path, "w") as f:
+                yaml.dump(
+                    source_files_s3_urls.model_dump(mode="json"),
+                    f,
+                    indent=2,
+                )
+            s3_client.upload_file(
+                Bucket=storage_settings.BUCKET,
+                Key=s3_source_files_key,
+                Filename=source_files_path.as_posix(),
+            )
+
+        manifest_file_key = (
+            f"{storage_settings.BUCKET_PREFIX}/{experiment_id}/manifest.yml"
+        )
+        io_spec_uri = S3Url(f"s3://{storage_settings.BUCKET}/{io_file_key}")
+        source_files_uri = S3Url(
+            f"s3://{storage_settings.BUCKET}/{s3_source_files_key}"
+        )
+        manifest = ExperimentRunManifest(
+            workflow_run_id=workflow_run_id,
+            experiment_id=experiment_id,
+            experiment_name=experiment.name,
+            io_spec=io_spec_uri,
+            source_files=source_files_uri,
+        )
+        with open(manifest_path, "w") as f:
+            yaml.dump(manifest.model_dump(mode="json"), f, indent=2)
+        s3_client.upload_file(
+            Bucket=storage_settings.BUCKET,
+            Key=manifest_file_key,
             Filename=manifest_path.as_posix(),
         )
+
     return run_ref
 
 
@@ -185,7 +253,7 @@ def upload_source_files(
     s3_client: S3Client,
     bucket: str,
     construct_filekey: Callable[[FilePath, str], str],
-) -> tuple[dict[str, set[S3Url]], dict[str, dict[FilePath, S3Url]]]:
+) -> tuple[SourceFileLocations, dict[str, dict[FilePath, S3Url]]]:
     """Upload source files to S3."""
 
     def handle_path(pth: FilePath, field_name: str):
@@ -218,4 +286,4 @@ def upload_source_files(
     uri_maps: dict[str, dict[FilePath, S3Url]] = {}
     for (field_name, uri), (pth, _) in zip(results, args, strict=True):
         uri_maps.setdefault(field_name, {})[pth] = uri
-    return uris, uri_maps
+    return SourceFileLocations(files=uris), uri_maps

@@ -18,6 +18,7 @@ from pydantic import (
     field_serializer,
     field_validator,
 )
+from pydantic.json_schema import SkipJsonSchema
 
 from scythe.utils.filesys import fetch_uri
 from scythe.utils.results import serialize_df_dict
@@ -230,7 +231,7 @@ class ExperimentOutputSpec(BaseModel, arbitrary_types_allowed=True):
     """A spec for the output of a leaf workflow."""
 
     # TODO: make this extensible with scalar columns
-    dataframes: dict[str, pd.DataFrame] = Field(default_factory=dict)
+    dataframes: SkipJsonSchema[dict[str, pd.DataFrame]] = Field(default_factory=dict)
 
     @field_validator("dataframes", mode="before")
     def validate_dataframes(cls, v):
