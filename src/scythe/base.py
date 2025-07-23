@@ -8,7 +8,16 @@ from pathlib import Path
 from typing import Any, cast
 
 import pandas as pd
-from pydantic import AnyUrl, BaseModel, Field, field_serializer, field_validator
+from pydantic import (
+    AnyUrl,
+    BaseModel,
+    Field,
+    FilePath,
+    HttpUrl,
+    UrlConstraints,
+    field_serializer,
+    field_validator,
+)
 
 from scythe.utils.filesys import fetch_uri
 from scythe.utils.results import serialize_df_dict
@@ -111,6 +120,15 @@ class ExperimentIndexAdditionalDataOverlapsWithSpecError(Exception):
         )
 
 
+class S3Url(AnyUrl):
+    """A URL for an S3 object."""
+
+    _constraints = UrlConstraints(allowed_schemes=["s3"], host_required=True)
+
+
+FileReference = S3Url | HttpUrl | Path | FilePath
+
+
 # TODO: consider making the payload a generic?
 class ExperimentInputSpec(BaseSpec):
     """A spec for running a leaf workflow."""
@@ -181,6 +199,22 @@ class ExperimentInputSpec(BaseSpec):
             df["sort_subindex"] = list(range(n_rows))
 
         return pd.MultiIndex.from_frame(df)
+
+    @classmethod
+    def _file_reference_fields(cls) -> list[str]:
+        """Get the file reference fields."""
+        annotations = cls.model_fields
+        return [k for k, v in annotations.items() if v.annotation is FileReference]
+
+    @property
+    def _source_file_paths(self) -> dict[str, FilePath]:
+        """Get the local source file paths."""
+        data = self.model_dump()
+        return {
+            k: data[k]
+            for k in self._file_reference_fields()
+            if isinstance(data[k], Path)
+        }
 
 
 class ScalarInDataframesError(Exception):

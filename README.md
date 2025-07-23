@@ -66,18 +66,19 @@ Scythe is useful for running many parallel simulations with a common I/O interfa
 
 In this example, we will demonstrate setting up a building energy simulation so we can create a dataset of energy modeling results for use in training a surrogate model.
 
-To begin, we start by defining the schema of the inputs and outputs. The inputs will ultimately be converted into dataframes (where the defined input fields are columns). Similarly, the output schema fields will be used as columns of results dataframes (and the input dataframe will actualy be used as a MultiIndex).
+To begin, we start by defining the schema of the inputs and outputs. The inputs will ultimately be converted into dataframes (where the defined input fields are columns). Similarly, the output schema fields will be used as columns of results dataframes (and the input dataframe will actualy be used as a MultiIndex). Note that `FileReference` inputs which are of type `Path` will automatically be uploaded to S3 and re-referenced.
 
 ```py
 from pydantic import Field
-from scythe.base import ExperimentInputSpec, ExperimentOutputSpec
+from scythe.base import ExperimentInputSpec, ExperimentOutputSpec, FileReference
 
 class BuildingSimulationInput(ExperimentInputSpec):
     """Simulation inputs for a building energy model."""
 
     r_value: float = Field(default=..., description="The R-Value of the building [m2K/W]", ge=0, le=15)
     lpd: float = Field(default=..., description="Lighting power density [W/m2]", ge=0, le=20)
-    setpoint: float =Field(default=..., description="Thermostat setpoint [deg.C]", ge=12, le=30)
+    setpoint: float = Field(default=..., description="Thermostat setpoint [deg.C]", ge=12, le=30)
+    weather_file: FileReference = Field(default=..., description="Weather file [.epw]")
 
 
 class BuildingSimulationOutput(ExperimentOutputSpec):
