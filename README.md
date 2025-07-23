@@ -176,3 +176,5 @@ files:
 - ExperimentRun class
 - add method for writing dataframes or other artifact step outputs unique to task run to bucket
 - Results downloaders
+- automatic s3/https conversion to local in middleware
+- optional handling of s3/https uris similarly to local on allocation (i.e. copying into experiment dir)
