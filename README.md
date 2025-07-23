@@ -66,7 +66,7 @@ Scythe is useful for running many parallel simulations with a common I/O interfa
 
 In this example, we will demonstrate setting up a building energy simulation so we can create a dataset of energy modeling results for use in training a surrogate model.
 
-To begin, we start by defining the schema of the inputs and outputs. The inputs will ultimately be converted into dataframes (where the defined input fields are columns). Similarly, the output schema fields will be used as columns of results dataframes (and the input dataframe will actualy be used as a MultiIndex). Note that `FileReference` inputs which are of type `Path` will automatically be uploaded to S3 and re-referenced as S3 URIs.
+To begin, we start by defining the schema of the inputs and outputs. The inputs will ultimately be converted into dataframes (where the defined input fields are columns). Similarly, the output schema fields will be used as columns of results dataframes (and the input dataframe will actualy be used as a MultiIndex). Note that `FileReference` inputs, which can be `HttpUrl | S3Url | Path`, which are of type `Path` will automatically be uploaded to S3 and re-referenced as S3 URIs.
 
 ```py
 from pydantic import Field
