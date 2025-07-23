@@ -96,16 +96,19 @@ def allocate_experiment(  # noqa: C901
 
     local_source_paths = [spec._source_file_paths for spec in specs]
     source_files: dict[str, set[FilePath]] = {}
-    all_source_file_names: dict[str, set[str]] = {}
     at_least_one_source_file = False
     for spec_paths in local_source_paths:
         for field_name, fpath in spec_paths.items():
             source_files.setdefault(field_name, set()).add(fpath)
+            at_least_one_source_file = True
+
+    all_source_file_names: dict[str, set[str]] = {}
+    for field_name, fpaths in source_files.items():
+        for fpath in fpaths:
             file_key = construct_source_filekey(fpath, field_name)
             if file_key in all_source_file_names.get(field_name, set()):
                 raise DuplicateSourceFilesError(file_key, field_name)
             all_source_file_names.setdefault(field_name, set()).add(file_key)
-            at_least_one_source_file = True
 
     if at_least_one_source_file:
         _source_files_s3_urls, source_files_s3_url_maps = upload_source_files(
@@ -200,9 +203,11 @@ def upload_source_files(
         for pth in paths:
             args.append((pth, field_name))
     with ThreadPoolExecutor(max_workers=10) as executor:
+        first_args = [a[0] for a in args]
+        second_args = [a[1] for a in args]
         results = list(
             tqdm(
-                executor.map(handle_path, args),
+                executor.map(handle_path, first_args, second_args),
                 total=len(args),
                 desc="Uploading source files",
             )
