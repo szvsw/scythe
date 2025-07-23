@@ -62,7 +62,36 @@ However, in the meantime, check out the [example project](https://github.com/szv
 
 ### Example
 
-Scythe is useful for running many parallel simulations with a common I/O interface. It abstracts away the logic of issuing simulations and combining results into well-structured dataframes and parquet files.
+Scythe is useful for running many parallel simulations with a common I/O interface. It abstracts away the logic of uploading and referencing artifacts, issuing simulations and combining results into well-structured dataframes and parquet files.
+
+After an experiment is finished, you will have a directory in your S3 bucket
+with the following structure:
+
+```
+<experiment_id>/
+├──── <datetime>/
+│     ├──── manifest.yml
+│     ├──── experiment_io_spec.yml
+│     ├──── input_artifacts.yml
+│     ├──── specs.pq
+│     ├──── artifacts/
+│     │     ├──── <field-1>/
+│     │     │     ├──── file1.ext
+│     │     │     └──── file2.ext
+│     │     └──── <field-1>/
+│     │     │     ├──── file1.ext
+│     │     │     └──── file2.ext
+│     │     ...
+│     ├──── scatter-gather/
+│     │     ├──── input/
+│     │     └──── output/
+│     ├──── final/
+│     │     ├──── scalars.pq
+│     │     ├──── <user-dataframe>.pq
+│     │     ├──── <user-dataframe>.pq
+├──── <datetime>/
+...
+```
 
 In this example, we will demonstrate setting up a building energy simulation so we can create a dataset of energy modeling results for use in training a surrogate model.
 
@@ -70,7 +99,8 @@ To begin, we start by defining the schema of the inputs and outputs. The inputs 
 
 ```py
 from pydantic import Field
-from scythe.base import ExperimentInputSpec, ExperimentOutputSpec, FileReference
+from scythe.base import ExperimentInputSpec, ExperimentOutputSpec
+from scythe.types import FileReference
 
 class BuildingSimulationInput(ExperimentInputSpec):
     """Simulation inputs for a building energy model."""
@@ -78,6 +108,7 @@ class BuildingSimulationInput(ExperimentInputSpec):
     r_value: float = Field(default=..., description="The R-Value of the building [m2K/W]", ge=0, le=15)
     lpd: float = Field(default=..., description="Lighting power density [W/m2]", ge=0, le=20)
     setpoint: float = Field(default=..., description="Thermostat setpoint [deg.C]", ge=12, le=30)
+    economizer: Literal["NoEconomizer", "DifferentialDryBulb", "DifferentialEnthalpy"] = Field(default=..., description="The type of economizer to use")
     weather_file: FileReference = Field(default=..., description="Weather file [.epw]")
     design_day_file: FileReference = Field(default=..., description="Weather file [.ddy]")
 
@@ -85,12 +116,12 @@ class BuildingSimulationInput(ExperimentInputSpec):
 class BuildingSimulationOutput(ExperimentOutputSpec):
     """Simulation outputs for a building energy model."""
 
-    heating: float = Field(default=... description="Annual heating energy usage, kWh/m2", ge=0)
-    cooling: float = Field(default=... description="Annual cooling energy usage, kWh/m2", ge=0)
-    lighting: float = Field(default=... description="Annual lighting energy usage, kWh/m2", ge=0)
-    equipment: float = Field(default=... description="Annual equipment energy usage, kWh/m2", ge=0)
-    fans: float = Field(default=... description="Annual fans energy usage, kWh/m2", ge=0)
-    pumps: float = Field(default=... description="Annual pumps energy usage, kWh/m2", ge=0)
+    heating: float = Field(default=..., description="Annual heating energy usage, kWh/m2", ge=0)
+    cooling: float = Field(default=..., description="Annual cooling energy usage, kWh/m2", ge=0)
+    lighting: float = Field(default=..., description="Annual lighting energy usage, kWh/m2", ge=0)
+    equipment: float = Field(default=..., description="Annual equipment energy usage, kWh/m2", ge=0)
+    fans: float = Field(default=..., description="Annual fans energy usage, kWh/m2", ge=0)
+    pumps: float = Field(default=..., description="Annual pumps energy usage, kWh/m2", ge=0)
 ```
 
 The schemas above will be exported into your results bucket as `experiment_io_spec.yaml` including any docstrings and descriptions.
@@ -126,16 +157,16 @@ Since `BuildingSimulationInput` inherited from `ExperimentInputSpec`, some metho
 
 **_TODO: document allocating experiments, infra_**
 
-After the experiment is finished running all tasks, it will automatically produce an output file `scalars.pq` with all of the results defined on your schema for each of the individual simulations that were executed.
+After the experiment is finished running all tasks, it will automatically produce an output file `scalars.pq` with all of the results defined on your output schema for each of the individual simulations that were executed.
 
 The index of the dataframe will itself be a dataframe with the input specs and some additional metadata, e.g:
 
 `MultiIndex`
 | experiment_id | sort_index | root_workflow_run_id | r_value | lpd | setpoint |
 | --- | --- | --- | ---: |---:|---:|
-| bem/v0 | 0 | abcd-efgh | 5.2 | 2.7 | 23.5 |
-| bem/v0 | 1 | abcd-efgh | 2.9 | 1.3 | 19.7 |
-| bem/v0 | 2 | abcd-efgh | 4.2 | 5.4 | 21.4 |
+| bem/v1 | 0 | abcd-efgh | 5.2 | 2.7 | 23.5 |
+| bem/v1 | 1 | abcd-efgh | 2.9 | 1.3 | 19.7 |
+| bem/v1 | 2 | abcd-efgh | 4.2 | 5.4 | 21.4 |
 
 `Data`
 | heating | cooling | lighting | equipment | fans | pumps |
@@ -146,28 +177,184 @@ The index of the dataframe will itself be a dataframe with the input specs and s
 
 **_TODO: document how additional dataframes of results are handled._**
 
-Additionally, in your bucket, you will find a `manifest.yml` file as well as a `input_artifacts.yml`
+Additionally, in your bucket, you will find a `manifest.yml` file as well as an `input_artifacts.yml` and `experiment_io_spec.yml`.
 
 `manifest.yml`
 
 ```yaml
-experiment_id: ma-bem/v1/2025-07-23_10-23-03
+experiment_id: building_energy/v1/2025-07-23_12-59-51
 experiment_name: scythe_experiment_simulate_energy
-io_spec: s3://mit-sdl/scythe/ma-bem/v1/2025-07-23_10-23-03/artifacts/experiment_io_spec.yml
-input_artifacts: s3://mit-sdl/scythe/ma-bem/v1/2025-07-23_10-23-03/artifacts/input_artifacts.yml
-workflow_run_id: e4c566cf-a78c-4d26-94d6-f313bb7b7210
+input_artifacts: s3://mit-sdl/scythe/building_energy/v1/2025-07-23_12-59-51/input_artifacts.yml
+io_spec: s3://mit-sdl/scythe/building_energy/v1/2025-07-23_12-59-51/experiment_io_spec.yml
+specs_uri: s3://mit-sdl/scythe/building_energy/v1/2025-07-23_12-59-51/specs.pq
+workflow_run_id: f764ef33-a377-4572-a398-a2dc56a0810f
 ```
 
 `input_artifacts.yml`
 
 ```yaml
 files:
-  weather_file:
-    - s3://mit-sdl/scythe/ma-bem/v1/2025-07-23_10-23-03/artifacts/weather_file/USA_MA_Boston_Logan_TMYx.epw
-    - s3://mit-sdl/scythe/ma-bem/v1/2025-07-23_10-23-03/artifacts/weather_file/USA_MA_Los.Angeles_LAX_TMYx.epw
   design_day_file:
-    - s3://mit-sdl/scythe/ma-bem/v1/2025-07-23_10-23-03/artifacts/weather_file/USA_MA_Boston_Logan_TMYx.ddy
-    - s3://mit-sdl/scythe/ma-bem/v1/2025-07-23_10-23-03/artifacts/weather_file/USA_MA_Los.Angeles_LAX_TMYx.ddy
+    - s3://mit-sdl/scythe/building_energy/v1/2025-07-23_12-59-51/artifacts/design_day_file/USA_MA_Boston.Logan_TMYx.ddy
+    - s3://mit-sdl/scythe/building_energy/v1/2025-07-23_12-59-51/artifacts/design_day_file/USA_CA_Los.Angeles.LAX_TMYx.ddy
+  weather_file:
+    - s3://mit-sdl/scythe/building_energy/v1/2025-07-23_12-59-51/artifacts/weather_file/USA_MA_Boston.Logan_TMYx.epw
+    - s3://mit-sdl/scythe/building_energy/v1/2025-07-23_12-59-51/artifacts/weather_file/USA_CA_Los.Angeles.LAX_TMYx.epw
+```
+
+`experiment_io_spec.yml`
+
+```yaml
+$defs:
+  BuildingSimulationInput:
+    additionalProperties: true
+    description: Simulation inputs for a building energy model.
+    properties:
+      design_day_file:
+        anyOf:
+          - format: uri
+            minLength: 1
+            type: string
+          - format: uri
+            maxLength: 2083
+            minLength: 1
+            type: string
+          - format: path
+            type: string
+          - format: file-path
+            type: string
+        description: Weather file [.ddy]
+        title: Design Day File
+      economizer:
+        description: The type of economizer to use
+        enum:
+          - NoEconomizer
+          - DifferentialDryBulb
+          - DifferentialEnthalpy
+        title: Economizer
+        type: string
+      experiment_id:
+        description: The experiment_id of the spec
+        title: Experiment Id
+        type: string
+      lpd:
+        description: Lighting power density [W/m2]
+        maximum: 20
+        minimum: 0
+        title: Lpd
+        type: number
+      r_value:
+        description: The R-Value of the building [m2K/W]
+        maximum: 15
+        minimum: 0
+        title: R Value
+        type: number
+      root_workflow_run_id:
+        anyOf:
+          - type: string
+          - type: "null"
+        default: null
+        description: The root workflow run id of the leaf.
+        title: Root Workflow Run Id
+      setpoint:
+        description: Thermostat setpoint [deg.C]
+        maximum: 30
+        minimum: 12
+        title: Setpoint
+        type: number
+      sort_index:
+        description: The sort index of the leaf.
+        minimum: 0
+        title: Sort Index
+        type: integer
+      weather_file:
+        anyOf:
+          - format: uri
+            minLength: 1
+            type: string
+          - format: uri
+            maxLength: 2083
+            minLength: 1
+            type: string
+          - format: path
+            type: string
+          - format: file-path
+            type: string
+        description: Weather file [.epw]
+        title: Weather File
+      workflow_run_id:
+        anyOf:
+          - type: string
+          - type: "null"
+        default: null
+        description: The workflow run id of the leaf.
+        title: Workflow Run Id
+    required:
+      - experiment_id
+      - sort_index
+      - r_value
+      - lpd
+      - setpoint
+      - economizer
+      - weather_file
+      - design_day_file
+    title: BuildingSimulationInput
+    type: object
+  BuildingSimulationOutput:
+    description: Simulation outputs for a building energy model.
+    properties:
+      cooling:
+        description: Annual cooling energy usage, kWh/m2
+        minimum: 0
+        title: Cooling
+        type: number
+      equipment:
+        description: Annual equipment energy usage, kWh/m2
+        minimum: 0
+        title: Equipment
+        type: number
+      fans:
+        description: Annual fans energy usage, kWh/m2
+        minimum: 0
+        title: Fans
+        type: number
+      heating:
+        description: Annual heating energy usage, kWh/m2
+        minimum: 0
+        title: Heating
+        type: number
+      lighting:
+        description: Annual lighting energy usage, kWh/m2
+        minimum: 0
+        title: Lighting
+        type: number
+      pumps:
+        description: Annual pumps energy usage, kWh/m2
+        minimum: 0
+        title: Pumps
+        type: number
+    required:
+      - heating
+      - cooling
+      - lighting
+      - equipment
+      - fans
+      - pumps
+    title: BuildingSimulationOutput
+    type: object
+description: The input and output schema for the experiment.
+properties:
+  input:
+    $ref: "#/$defs/BuildingSimulationInput"
+    description: The input for the experiment.
+  output:
+    $ref: "#/$defs/BuildingSimulationOutput"
+    description: The output for the experiment.
+required:
+  - input
+  - output
+title: ExperimentIO
+type: object
 ```
 
 ## To-dos (help wanted!)
@@ -178,3 +365,6 @@ files:
 - Results downloaders
 - automatic s3/https conversion to local in middleware
 - optional handling of s3/https uris similarly to local on allocation (i.e. copying into experiment dir)
+- consider an abc or protocol on input with a `run` method.
+- toggleable scoping by date
+- toggleable versioning
