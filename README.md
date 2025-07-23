@@ -66,7 +66,7 @@ Scythe is useful for running many parallel simulations with a common I/O interfa
 
 In this example, we will demonstrate setting up a building energy simulation so we can create a dataset of energy modeling results for use in training a surrogate model.
 
-To begin, we start by defining the schema of the inputs and outputs. The inputs will ultimately be converted into dataframes (where the defined input fields are columns). Similarly, the output schema fields will be used as columns of results dataframes (and the input dataframe will actualy be used as a MultiIndex). Note that `FileReference` inputs which are of type `Path` will automatically be uploaded to S3 and re-referenced.
+To begin, we start by defining the schema of the inputs and outputs. The inputs will ultimately be converted into dataframes (where the defined input fields are columns). Similarly, the output schema fields will be used as columns of results dataframes (and the input dataframe will actualy be used as a MultiIndex). Note that `FileReference` inputs which are of type `Path` will automatically be uploaded to S3 and re-referenced as S3 URIs.
 
 ```py
 from pydantic import Field
@@ -79,6 +79,7 @@ class BuildingSimulationInput(ExperimentInputSpec):
     lpd: float = Field(default=..., description="Lighting power density [W/m2]", ge=0, le=20)
     setpoint: float = Field(default=..., description="Thermostat setpoint [deg.C]", ge=12, le=30)
     weather_file: FileReference = Field(default=..., description="Weather file [.epw]")
+    design_day_file: FileReference = Field(default=..., description="Weather file [.ddy]")
 
 
 class BuildingSimulationOutput(ExperimentOutputSpec):
@@ -102,7 +103,7 @@ Next, we define the actual simulation logic. We will decorate the simulation fun
 from scythe.registry import ExperimentRegistry
 
 @ExperimentRegistry.Register()
-def simulate(input_spec: BuildingSimulationInput) -> BuildingSimulationOutput:
+def simulate_energy(input_spec: BuildingSimulationInput) -> BuildingSimulationOutput:
     """Initialize and execute an energy model of a building."""
 
     # do some work!
@@ -145,11 +146,33 @@ The index of the dataframe will itself be a dataframe with the input specs and s
 
 **_TODO: document how additional dataframes of results are handled._**
 
+Additionally, in your bucket, you will find a `manifest.yml` file as well as a `source_files.yml`
+
+`manifest.yml`
+
+```yaml
+experiment_id: ma-bem/v1/2025-07-23_10-23-03
+experiment_name: scythe_experiment_simulate_energy
+io_spec: s3://mit-sdl/scythe/ma-bem/v1/2025-07-23_10-23-03/artifacts/experiment_io_spec.yml
+source_files: s3://mit-sdl/scythe/ma-bem/v1/2025-07-23_10-23-03/artifacts/source_files.yml
+workflow_run_id: e4c566cf-a78c-4d26-94d6-f313bb7b7210
+```
+
+`source_files.yml`
+
+```yaml
+files:
+  weather_file:
+    - s3://mit-sdl/scythe/ma-bem/v1/2025-07-23_10-23-03/artifacts/weather_file/USA_MA_Boston_Logan_TMYx.epw
+    - s3://mit-sdl/scythe/ma-bem/v1/2025-07-23_10-23-03/artifacts/weather_file/USA_MA_Los.Angeles_LAX_TMYx.epw
+  design_day_file:
+    - s3://mit-sdl/scythe/ma-bem/v1/2025-07-23_10-23-03/artifacts/weather_file/USA_MA_Boston_Logan_TMYx.ddy
+    - s3://mit-sdl/scythe/ma-bem/v1/2025-07-23_10-23-03/artifacts/weather_file/USA_MA_Los.Angeles_LAX_TMYx.ddy
+```
+
 ## To-dos (help wanted!)
 
 - Start documenting
 - ExperimentRun class
-- write `experiment_io_spec.yaml` to bucket
-- add method for writing dataframes unique to task run to bucket
+- add method for writing dataframes or other artifact step outputs unique to task run to bucket
 - Results downloaders
-- Automatic local artifact conversion to cloud artifacts
