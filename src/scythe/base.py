@@ -208,7 +208,7 @@ class ExperimentInputSpec(BaseSpec):
         return [k for k, v in annotations.items() if v.annotation is FileReference]
 
     @property
-    def _source_file_paths(self) -> dict[str, FilePath]:
+    def _local_input_artifact_file_paths(self) -> dict[str, FilePath]:
         """Get the local source file paths."""
         data = self.model_dump()
         return {

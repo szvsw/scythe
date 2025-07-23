@@ -146,7 +146,7 @@ The index of the dataframe will itself be a dataframe with the input specs and s
 
 **_TODO: document how additional dataframes of results are handled._**
 
-Additionally, in your bucket, you will find a `manifest.yml` file as well as a `source_files.yml`
+Additionally, in your bucket, you will find a `manifest.yml` file as well as a `input_artifacts.yml`
 
 `manifest.yml`
 
@@ -154,11 +154,11 @@ Additionally, in your bucket, you will find a `manifest.yml` file as well as a `
 experiment_id: ma-bem/v1/2025-07-23_10-23-03
 experiment_name: scythe_experiment_simulate_energy
 io_spec: s3://mit-sdl/scythe/ma-bem/v1/2025-07-23_10-23-03/artifacts/experiment_io_spec.yml
-source_files: s3://mit-sdl/scythe/ma-bem/v1/2025-07-23_10-23-03/artifacts/source_files.yml
+input_artifacts: s3://mit-sdl/scythe/ma-bem/v1/2025-07-23_10-23-03/artifacts/input_artifacts.yml
 workflow_run_id: e4c566cf-a78c-4d26-94d6-f313bb7b7210
 ```
 
-`source_files.yml`
+`input_artifacts.yml`
 
 ```yaml
 files:

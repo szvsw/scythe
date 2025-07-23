@@ -44,8 +44,8 @@ class ExperimentSpecsMismatchError(Exception):
         )
 
 
-class DuplicateSourceFilesError(Exception):
-    """An error raised when a file is duplicated in the source files."""
+class DuplicateInputArtifactsError(Exception):
+    """An error raised when a file is duplicated in the input artifacts."""
 
     def __init__(self, file_name: str, field_name: str):
         """Initialize the error."""
@@ -53,13 +53,13 @@ class DuplicateSourceFilesError(Exception):
         self.field_name = field_name
         super().__init__(
             f"File with name {file_name} for field {field_name} is duplicated in the "
-            f"source files (i.e. multiple files with the same name but in different "
+            f"input artifacts (i.e. multiple files with the same name but in different "
             "directories.) "
         )
 
 
-class SourceFileLocations(BaseModel):
-    """The locations of the source files for an experiment."""
+class InputArtifactLocations(BaseModel):
+    """The locations of the input artifacts for an experiment."""
 
     files: dict[str, set[S3Url]]
 
@@ -71,7 +71,7 @@ class ExperimentRunManifest(BaseModel):
     experiment_id: str
     experiment_name: str
     io_spec: S3Url
-    source_files: S3Url | None = None
+    input_artifacts: S3Url | None = None
 
 
 # TODO: consider factoring this into a an ExperimentRun Class
@@ -107,37 +107,40 @@ def allocate_experiment(  # noqa: C901
     # TODO: this will cause a race condition if multile files have the same name but
     # live in different directories.
     # hence the check above
-    def construct_source_filekey(pth: FilePath, field_name: str):
+    def construct_input_artifact_key(pth: FilePath, field_name: str):
         return f"{storage_settings.BUCKET_PREFIX}/{experiment_id}/artifacts/{field_name}/{pth.name}"
 
-    local_source_paths = [spec._source_file_paths for spec in specs]
-    source_files: dict[str, set[FilePath]] = {}
-    at_least_one_source_file = False
-    for spec_paths in local_source_paths:
+    local_input_artifact_paths = [
+        spec._local_input_artifact_file_paths for spec in specs
+    ]
+    input_artifacts: dict[str, set[FilePath]] = {}
+    at_least_one_input_artifact = False
+    for spec_paths in local_input_artifact_paths:
         for field_name, fpath in spec_paths.items():
-            source_files.setdefault(field_name, set()).add(fpath)
-            at_least_one_source_file = True
+            input_artifacts.setdefault(field_name, set()).add(fpath)
+            at_least_one_input_artifact = True
 
-    all_source_file_names: dict[str, set[str]] = {}
-    for field_name, fpaths in source_files.items():
+    all_input_artifact_names: dict[str, set[str]] = {}
+    for field_name, fpaths in input_artifacts.items():
         for fpath in fpaths:
-            file_key = construct_source_filekey(fpath, field_name)
-            if file_key in all_source_file_names.get(field_name, set()):
-                raise DuplicateSourceFilesError(file_key, field_name)
-            all_source_file_names.setdefault(field_name, set()).add(file_key)
+            file_key = construct_input_artifact_key(fpath, field_name)
+            if file_key in all_input_artifact_names.get(field_name, set()):
+                raise DuplicateInputArtifactsError(file_key, field_name)
+            all_input_artifact_names.setdefault(field_name, set()).add(file_key)
 
-    source_files_s3_urls = None
-    if at_least_one_source_file:
-        source_files_s3_urls, source_files_s3_url_maps = upload_source_files(
-            source_files, s3_client, storage_settings.BUCKET, construct_source_filekey
+    input_artifacts_s3_urls = None
+    if at_least_one_input_artifact:
+        input_artifacts_s3_urls, input_artifacts_s3_url_maps = upload_input_artifacts(
+            input_artifacts,
+            s3_client,
+            storage_settings.BUCKET,
+            construct_input_artifact_key,
         )
         for spec in specs:
-            for field_name, fpath in spec._source_file_paths.items():
-                uri_map = source_files_s3_url_maps[field_name]
+            for field_name, fpath in spec._local_input_artifact_file_paths.items():
+                uri_map = input_artifacts_s3_url_maps[field_name]
                 uri = uri_map[fpath]
                 setattr(spec, field_name, uri)
-
-    # TODO: upload manifest of source files to s3
 
     df = pd.DataFrame([s.model_dump(mode="json") for s in specs])
     df_name = "specs"
@@ -196,7 +199,7 @@ def allocate_experiment(  # noqa: C901
         tdir = Path(temp_dir)
         manifest_path = tdir / "manifest.yml"
         io_path = tdir / "experiment_io_spec.yml"
-        source_files_path = tdir / "source_files.yml"
+        input_artifacts_path = tdir / "input_artifacts.yml"
 
         # dump and upload the schema
         with open(io_path, "w") as f:
@@ -209,33 +212,33 @@ def allocate_experiment(  # noqa: C901
         )
 
         # dump and upload the source files
-        s3_source_files_key = f"{storage_settings.BUCKET_PREFIX}/{experiment_id}/artifacts/source_files.yml"
-        if source_files_s3_urls:
-            with open(source_files_path, "w") as f:
+        s3_input_artifacts_key = f"{storage_settings.BUCKET_PREFIX}/{experiment_id}/artifacts/input_artifacts.yml"
+        if input_artifacts_s3_urls:
+            with open(input_artifacts_path, "w") as f:
                 yaml.dump(
-                    source_files_s3_urls.model_dump(mode="json"),
+                    input_artifacts_s3_urls.model_dump(mode="json"),
                     f,
                     indent=2,
                 )
             s3_client.upload_file(
                 Bucket=storage_settings.BUCKET,
-                Key=s3_source_files_key,
-                Filename=source_files_path.as_posix(),
+                Key=s3_input_artifacts_key,
+                Filename=input_artifacts_path.as_posix(),
             )
 
         manifest_file_key = (
             f"{storage_settings.BUCKET_PREFIX}/{experiment_id}/manifest.yml"
         )
         io_spec_uri = S3Url(f"s3://{storage_settings.BUCKET}/{io_file_key}")
-        source_files_uri = S3Url(
-            f"s3://{storage_settings.BUCKET}/{s3_source_files_key}"
+        input_artifacts_uri = S3Url(
+            f"s3://{storage_settings.BUCKET}/{s3_input_artifacts_key}"
         )
         manifest = ExperimentRunManifest(
             workflow_run_id=workflow_run_id,
             experiment_id=experiment_id,
             experiment_name=experiment.name,
             io_spec=io_spec_uri,
-            source_files=source_files_uri,
+            input_artifacts=input_artifacts_uri,
         )
         with open(manifest_path, "w") as f:
             yaml.dump(manifest.model_dump(mode="json"), f, indent=2)
@@ -248,12 +251,12 @@ def allocate_experiment(  # noqa: C901
     return run_ref
 
 
-def upload_source_files(
-    source_files: dict[str, set[FilePath]],
+def upload_input_artifacts(
+    input_artifacts: dict[str, set[FilePath]],
     s3_client: S3Client,
     bucket: str,
     construct_filekey: Callable[[FilePath, str], str],
-) -> tuple[SourceFileLocations, dict[str, dict[FilePath, S3Url]]]:
+) -> tuple[InputArtifactLocations, dict[str, dict[FilePath, S3Url]]]:
     """Upload source files to S3."""
 
     def handle_path(pth: FilePath, field_name: str):
@@ -267,7 +270,7 @@ def upload_source_files(
         return field_name, uri
 
     args: list[tuple[FilePath, str]] = []
-    for field_name, paths in source_files.items():
+    for field_name, paths in input_artifacts.items():
         for pth in paths:
             args.append((pth, field_name))
     with ThreadPoolExecutor(max_workers=10) as executor:
@@ -286,4 +289,4 @@ def upload_source_files(
     uri_maps: dict[str, dict[FilePath, S3Url]] = {}
     for (field_name, uri), (pth, _) in zip(results, args, strict=True):
         uri_maps.setdefault(field_name, {})[pth] = uri
-    return SourceFileLocations(files=uris), uri_maps
+    return InputArtifactLocations(files=uris), uri_maps
