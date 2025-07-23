@@ -59,6 +59,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Set up the environment
+        uses: ./.github/actions/setup-python-env
+
       - name: Configure Git Credentials
         run: |
           git config user.name github-actions[bot]
