@@ -13,7 +13,6 @@ from hatchet_sdk import TaskRunRef, TriggerWorkflowOptions
 from pydantic import BaseModel, Field, FilePath
 from tqdm import tqdm
 
-from scythe.base import S3Url
 from scythe.registry import Standalone, TInput, TOutput
 from scythe.scatter_gather import (
     RecursionMap,
@@ -22,6 +21,7 @@ from scythe.scatter_gather import (
     scatter_gather,
 )
 from scythe.storage import ScytheStorageSettings
+from scythe.types import S3Url
 from scythe.utils.results import save_and_upload_parquets
 
 if TYPE_CHECKING:
@@ -70,6 +70,7 @@ class ExperimentRunManifest(BaseModel):
     workflow_run_id: str
     experiment_id: str
     experiment_name: str
+    specs_uri: S3Url
     io_spec: S3Url
     input_artifacts: S3Url | None = None
 
@@ -82,7 +83,7 @@ def allocate_experiment(  # noqa: C901
     experiment: Standalone[TInput, TOutput],
     specs: Sequence[TInput],
     recursion_map: RecursionMap | None = None,
-    construct_filekey: Callable[[str], str] | None = None,
+    construct_specs_filekey: Callable[[str], str] | None = None,
     storage_settings: ScytheStorageSettings | None = None,
     s3_client: S3Client | None = None,
 ) -> TaskRunRef[ScatterGatherInput, ScatterGatherResult]:
@@ -145,22 +146,22 @@ def allocate_experiment(  # noqa: C901
     df = pd.DataFrame([s.model_dump(mode="json") for s in specs])
     df_name = "specs"
 
-    def construct_filekey_(filename: str):
-        return f"{storage_settings.BUCKET_PREFIX}/{experiment_id}/artifacts/specs/{filename}.pq"
+    def construct_specs_filekey_(filename: str):
+        return f"{storage_settings.BUCKET_PREFIX}/{experiment_id}/{filename}.pq"
 
-    construct_filekey = construct_filekey or construct_filekey_
+    construct_specs_filekey = construct_specs_filekey or construct_specs_filekey_
 
     uris = save_and_upload_parquets(
         collected_dfs={df_name: df},
         s3=s3_client,
         bucket=storage_settings.BUCKET,
-        output_key_constructor=construct_filekey,
+        output_key_constructor=construct_specs_filekey,
     )
-    uri = uris[df_name]
+    specs_uri = uris[df_name]
     scatter_gather_input = ScatterGatherInput(
         experiment_id=experiment_id,
         task_name=experiment.name,
-        specs_path=uri,
+        specs_uri=specs_uri,
         recursion_map=recursion_map or RecursionMap(path=None, factor=10, max_depth=0),
         storage_settings=storage_settings,
     )
@@ -243,6 +244,7 @@ def allocate_experiment(  # noqa: C901
             experiment_name=experiment.name,
             io_spec=io_spec_uri,
             input_artifacts=input_artifacts_uri,
+            specs_uri=specs_uri,
         )
         with open(manifest_path, "w") as f:
             yaml.dump(manifest.model_dump(mode="json"), f, indent=2)
@@ -259,12 +261,12 @@ def upload_input_artifacts(
     input_artifacts: dict[str, set[FilePath]],
     s3_client: S3Client,
     bucket: str,
-    construct_filekey: Callable[[FilePath, str], str],
+    construct_artifact_key: Callable[[FilePath, str], str],
 ) -> tuple[InputArtifactLocations, dict[str, dict[FilePath, S3Url]]]:
     """Upload source files to S3."""
 
     def handle_path(pth: FilePath, field_name: str):
-        filekey = construct_filekey(pth, field_name)
+        filekey = construct_artifact_key(pth, field_name)
         uri = S3Url(f"s3://{bucket}/{filekey}")
         s3_client.upload_file(
             Bucket=bucket,

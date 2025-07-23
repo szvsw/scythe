@@ -6,7 +6,8 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 import pandas as pd
-from pydantic import AnyUrl
+
+from scythe.types import S3Url
 
 if TYPE_CHECKING:
     from mypy_boto3_s3.client import S3Client
@@ -67,9 +68,9 @@ def save_and_upload_parquets(
     bucket: str,
     output_key_constructor: Callable[[str], str],
     save_errors: bool = False,
-) -> dict[str, AnyUrl]:
+) -> dict[str, S3Url]:
     """Save and upload results to s3."""
-    uris: dict[str, AnyUrl] = {}
+    uris: dict[str, S3Url] = {}
     with tempfile.TemporaryDirectory() as tmpdir:
         for key, df in collected_dfs.items():
             output_key = output_key_constructor(key)
@@ -79,5 +80,5 @@ def save_and_upload_parquets(
             df.to_parquet(f)
             s3.upload_file(Bucket=bucket, Key=output_key, Filename=f)
             uri = f"s3://{bucket}/{output_key}"
-            uris[key] = AnyUrl(uri)
+            uris[key] = S3Url(uri)
     return uris

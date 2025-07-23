@@ -13,13 +13,12 @@ from pydantic import (
     BaseModel,
     Field,
     FilePath,
-    HttpUrl,
-    UrlConstraints,
     field_serializer,
     field_validator,
 )
 from pydantic.json_schema import SkipJsonSchema
 
+from scythe.types import FileReference
 from scythe.utils.filesys import fetch_uri
 from scythe.utils.results import serialize_df_dict
 
@@ -119,15 +118,6 @@ class ExperimentIndexAdditionalDataOverlapsWithSpecError(Exception):
         super().__init__(
             f"Additional index data overlaps with the spec: {overlapping_keys}"
         )
-
-
-class S3Url(AnyUrl):
-    """A URL for an S3 object."""
-
-    _constraints = UrlConstraints(allowed_schemes=["s3"], host_required=True)
-
-
-FileReference = S3Url | HttpUrl | Path | FilePath
 
 
 # TODO: consider making the payload a generic?

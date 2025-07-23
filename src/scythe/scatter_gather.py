@@ -9,12 +9,13 @@ import boto3
 import pandas as pd
 from hatchet_sdk import Context, TriggerWorkflowOptions
 from hatchet_sdk.clients.admin import WorkflowRunTriggerConfig
-from pydantic import AnyUrl, BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from scythe.base import BaseSpec, ExperimentInputSpec, ExperimentOutputSpec
 from scythe.hatchet import hatchet
 from scythe.registry import ExperimentRegistry, ExperimentStandaloneType, TOutput
 from scythe.storage import ScytheStorageSettings
+from scythe.types import S3Url
 from scythe.utils.filesys import fetch_uri
 from scythe.utils.results import save_and_upload_parquets, transpose_dataframe_dict
 
@@ -90,8 +91,8 @@ class ScatterGatherInput(BaseSpec):
 
     task_name: str = Field(..., description="The name of the Hatchet task to run.")
     # TODO: consider isolating specs path to allow two versions of the class, including
-    # one which takes specs rather than AnyUrl
-    specs_path: AnyUrl = Field(..., description="The path to the specs to run.")
+    # one which takes specs rather than S3Url
+    specs_uri: S3Url = Field(..., description="The path to the specs to run.")
     storage_settings: ScytheStorageSettings = Field(
         default_factory=lambda: ScytheStorageSettings(),
         description="The storage settings to use.",
@@ -103,20 +104,28 @@ class ScatterGatherInput(BaseSpec):
         self,
         filename: str,
         *,
-        mode: Literal["input", "output"],
+        mode: Literal["input", "output", "final"],
         workflow_run_id: str,
         suffix: str,
     ) -> str:
         """Cosntruct an output key for the scatter gather workflow."""
         bucket_prefix = self.storage_settings.BUCKET_PREFIX
-        output_key_base = f"{bucket_prefix}/{self.experiment_id}/{mode}"
-        output_results_dir = (
-            f"recurse/{len(self.recursion_map.path)}"
-            if self.recursion_map.path
-            else "root"
+        output_key_base = f"{bucket_prefix}/{self.experiment_id}/"
+        mode_prefix = f"{mode}/" if mode == "final" else f"scatter-gather/{mode}/"
+        recurse_prefix = (
+            (
+                f"recurse/{len(self.recursion_map.path)}/"
+                if self.recursion_map.path
+                else "root/"
+            )
+            if mode != "final"
+            else ""
         )
-        output_key_prefix = f"{output_key_base}/{output_results_dir}"
-        return f"{output_key_prefix}/{workflow_run_id}/{filename}.{suffix}"
+        workflow_run_id_prefix = f"{workflow_run_id}/" if mode != "final" else ""
+        output_key_prefix = (
+            f"{output_key_base}{mode_prefix}{recurse_prefix}{workflow_run_id_prefix}"
+        )
+        return f"{output_key_prefix}/{filename}.{suffix}"
 
     @property
     def standalone(self) -> ExperimentStandaloneType:
@@ -126,7 +135,7 @@ class ScatterGatherInput(BaseSpec):
     @cached_property
     def specs(self) -> list[ExperimentInputSpec]:
         """Fetch the specs and convert to the input type."""
-        local_path = self.fetch_uri(self.specs_path, use_cache=True)
+        local_path = self.fetch_uri(self.specs_uri, use_cache=True)
         df = pd.read_parquet(local_path)
         specs_dicts = df.to_dict(orient="records")
         validator = self.standalone.input_validator
@@ -182,7 +191,7 @@ class ScatterGatherInput(BaseSpec):
             specs_as_df = pd.DataFrame([
                 spec.model_dump(mode="json") for spec in specs_to_use
             ])
-            filename = f"specs_{branch_ix:06d}.pq"
+            filename = f"specs_{branch_ix:06d}"
             uris = save_and_upload_parquets(
                 collected_dfs={
                     filename: specs_as_df,
@@ -200,7 +209,7 @@ class ScatterGatherInput(BaseSpec):
                 experiment_id=self.experiment_id,
                 task_name=self.task_name,
                 storage_settings=self.storage_settings,
-                specs_path=uris[filename],
+                specs_uri=uris[filename],
                 recursion_map=recursion_map,
             )
             del specs_as_df
@@ -223,6 +232,11 @@ class ScatterGatherInput(BaseSpec):
         return triggers, children_payloads
 
     @property
+    def is_root(self) -> bool:
+        """Check if the current payload is a root, i.e. the original call."""
+        return self.recursion_map.is_root
+
+    @property
     def is_base_case(self) -> bool:
         """Check if the current payload is a base case, i.e. no recursion needed."""
         too_few_specs = len(self.specs) <= self.recursion_map.factor
@@ -237,7 +251,7 @@ class ScatterGatherInput(BaseSpec):
 class ScatterGatherResult(BaseModel):
     """The result of the scatter gather workflow."""
 
-    uris: dict[str, AnyUrl]
+    uris: dict[str, S3Url]
 
     def to_gathered_experiment_runs(self) -> GatheredExperimentRuns:
         """Convert the scatter gather result to a gathered experiment runs."""
@@ -295,6 +309,20 @@ async def scatter_gather(
         output_key_constructor=output_key_constructor,
         save_errors=payload.save_errors,
     )
+    if payload.is_root:
+        output_key_constructor = partial(
+            payload.construct_filekey,
+            mode="final",
+            workflow_run_id=ctx.workflow_run_id,
+            suffix="pq",
+        )
+        uris = save_and_upload_parquets(
+            collected_dfs=transposed_dfs,
+            s3=s3,
+            bucket=payload.storage_settings.BUCKET,
+            output_key_constructor=output_key_constructor,
+            save_errors=payload.save_errors,
+        )
 
     return ScatterGatherResult(uris=uris)
 
