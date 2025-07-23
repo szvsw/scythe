@@ -204,7 +204,9 @@ def allocate_experiment(  # noqa: C901
         # dump and upload the schema
         with open(io_path, "w") as f:
             yaml.dump(schema, f, indent=2)
-        io_file_key = f"{storage_settings.BUCKET_PREFIX}/{experiment_id}/artifacts/experiment_io_spec.yml"
+        io_file_key = (
+            f"{storage_settings.BUCKET_PREFIX}/{experiment_id}/experiment_io_spec.yml"
+        )
         s3_client.upload_file(
             Bucket=storage_settings.BUCKET,
             Key=io_file_key,
@@ -212,7 +214,9 @@ def allocate_experiment(  # noqa: C901
         )
 
         # dump and upload the source files
-        s3_input_artifacts_key = f"{storage_settings.BUCKET_PREFIX}/{experiment_id}/artifacts/input_artifacts.yml"
+        s3_input_artifacts_key = (
+            f"{storage_settings.BUCKET_PREFIX}/{experiment_id}/input_artifacts.yml"
+        )
         if input_artifacts_s3_urls:
             with open(input_artifacts_path, "w") as f:
                 yaml.dump(
