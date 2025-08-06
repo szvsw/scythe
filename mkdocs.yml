@@ -24,6 +24,7 @@ theme:
   feature:
     tabs: true
   features:
+    - content.code.annotate
     # - toc.follow
     # - toc.integrate
     - navigation.top
@@ -64,3 +65,11 @@ markdown_extensions:
       permalink: "#"
   - pymdownx.arithmatex:
       generic: true
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences
+  - tables
