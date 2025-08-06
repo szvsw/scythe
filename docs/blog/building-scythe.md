@@ -8,10 +8,10 @@ eg. artifact infil- and exfiltration, handling errors, interacting with supercom
 dealing with cloud infrastructure, etc.
 
 As part of the collaborative research process, I ended up developing - and re-developing -
-my workflows for running both my own and my colleagues' emabarrassingly parallel experiments,
+my workflows for running both my own and my colleagues' embarrassingly parallel experiments,
 which eventually resulted in the creation of a library I've called [Scythe](https://github.com/szvsw/scythe).
 Scythe is a lightweight tool which helps you seed and reap (scatter and gather)
-emabarassingly parallel experiments via the asynchronous distributed queue [Hatchet](https://hatchet.run).
+embarrassingly parallel experiments via the asynchronous distributed queue [Hatchet](https://hatchet.run).
 
 The goal of Scythe is to abstract away some of those unfamiliar cloud/distributed computing
 details to let researchers focus on what they are familiar with (i.e. writing consistent
@@ -48,6 +48,10 @@ I'm writing this for a few reasons -
 - to reflect on some of the work I've been doing in the course of my Masters/PhD that is not
   really relevant to reserach publications, but which is arguably more complex and valuable
   from a personal skill development perspective.
+
+This is meant to be part dev-diary, part primer on using Scythe, and part primer on deploying
+distributed computing applications in the cloud which I can share with classmates/colleagues.
+Depending on your interests, you will probably want to skip various sections of it.
 
 ### Background
 
@@ -622,6 +626,10 @@ class to write those to an appropriately namespaced/scoped location in the exper
 and return a reference to those files, creating their own datalake that they can later pull from.
 
 _TODO: document writing out user files_
+
+### Artifact Infiltration
+
+_TODO: automatic upload, caching inside of tasks, etc._
 
 ## Cloud Infrastructure
 

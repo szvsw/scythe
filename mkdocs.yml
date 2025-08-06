@@ -9,6 +9,9 @@ copyright: Maintained by <a href="https://github.com/szvsw">Sam Wolk</a>.
 
 nav:
   - Home: index.md
+  - Blog:
+      - Building Scythe: blog/building-scythe.md
+
 plugins:
   - search
   - mkdocstrings:
