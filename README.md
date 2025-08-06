@@ -14,6 +14,8 @@ embarrassingly parallel experiments via the asynchronous distributed queue [Hatc
 
 - **Github repository**: <https://github.com/szvsw/scythe/>
 - **Documentation** <https://szvsw.github.io/scythe/>
+- **Example usage repository**: <https://github.com/szvsw/scythe-example>
+- **Self-hosting Hatchet**: <https://github.com/szvsw/hatchet-sst>
 
 ## Motivation
 

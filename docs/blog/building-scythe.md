@@ -627,9 +627,11 @@ and return a reference to those files, creating their own datalake that they can
 
 _TODO: document writing out user files_
 
-### Artifact Infiltration
+### Artifact Infiltration & Results Exfiltration
 
 _TODO: automatic upload, caching inside of tasks, etc._
+
+### Scalars dataframe construction
 
 ## Cloud Infrastructure
 
