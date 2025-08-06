@@ -105,8 +105,9 @@ spirit.
   managed Hatchet.
 - `v1`: Summer 2025+: Adopt Hatchet v1, fully isolate experiment creation/tracking into
   re-usable extensible patterns including middleware for things like data infiltration/exfiltration
-  by creating [Scythe](https://github.com/szvsw/scythe). Create simpler self-hosting config
-  via [sst.dev](https://sst.dev).
+  by creating [Scythe](https://github.com/szvsw/scythe)
+  ([example usage](https://github.com/szvsw/scythe-example)). Create simpler self-hosting
+  config via [sst.dev](https://sst.dev) in [HatchetSST](https://github.com/szvsw/hatchet-sst).
 
 ### The road(s) not taken...
 
@@ -810,6 +811,8 @@ exposed ports, etc. Each _task_ within a service is just a replica of that servi
 definition. So if we want 3000 copies of our worker node, we can just specify to run
 3000 copies of the relevant service/task.
 
+### Building a mini-cluster with your lab desktops' overnight spare cycles
+
 ### Self-hosting Hatchet as an intro to cloud configuration
 
 While I actually think there's a good chance you are likely to be better off using
@@ -938,3 +941,7 @@ That would be a great and easy first PR!
 #### Deploying the Hatchet service
 
 ### Worker nodes
+
+#### Deploying a lot of workers at once
+
+#### Differentiating worker types
