@@ -3,8 +3,9 @@
 import tempfile
 from collections.abc import Callable, Sequence
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 import boto3
 import pandas as pd
@@ -75,13 +76,90 @@ class ExperimentRunManifest(BaseModel):
     input_artifacts: S3Url | None = None
 
 
+class SemVer(BaseModel):
+    """A semantic version."""
+
+    major: int
+    minor: int = 0
+    patch: int = 0
+
+    @classmethod
+    def FromString(cls, version: str) -> "SemVer":
+        """Parse a semantic version from a string."""
+        if not version.startswith("v"):
+            msg = "Version must start with 'v'"
+            raise ValueError(msg)
+        version = version[1:]
+        delimiter = "." if "." in version else "-"
+        parts = version.split(delimiter)
+        if len(parts) == 0:
+            msg = "Version must have at least one part"
+            raise ValueError(msg)
+        major = int(parts[0])
+        minor = int(parts[1]) if len(parts) > 1 else 0
+        patch = int(parts[2]) if len(parts) > 2 else 0
+        return cls(major=major, minor=minor, patch=patch)
+
+    def __lt__(self, other: "SemVer") -> bool:
+        """Compare two semantic versions."""
+        if self.major != other.major:
+            return self.major < other.major
+        if self.minor != other.minor:
+            return self.minor < other.minor
+        return self.patch < other.patch
+
+    def __le__(self, other: "SemVer") -> bool:
+        """Compare two semantic versions."""
+        if self.major != other.major:
+            return self.major <= other.major
+        if self.minor != other.minor:
+            return self.minor <= other.minor
+        return self.patch <= other.patch
+
+    def __gt__(self, other: "SemVer") -> bool:
+        """Compare two semantic versions."""
+        if self.major != other.major:
+            return self.major > other.major
+        if self.minor != other.minor:
+            return self.minor > other.minor
+        return self.patch > other.patch
+
+    def __ge__(self, other: "SemVer") -> bool:
+        """Compare two semantic versions."""
+        if self.major != other.major:
+            return self.major >= other.major
+        if self.minor != other.minor:
+            return self.minor >= other.minor
+        return self.patch >= other.patch
+
+    def next_major_version(self) -> "SemVer":
+        """Get the next major version."""
+        return SemVer(major=self.major + 1, minor=0, patch=0)
+
+    def next_minor_version(self) -> "SemVer":
+        """Get the next minor version."""
+        return SemVer(major=self.major, minor=self.minor + 1, patch=0)
+
+    def next_patch_version(self) -> "SemVer":
+        """Get the next patch version."""
+        return SemVer(major=self.major, minor=self.minor, patch=self.patch + 1)
+
+    def __str__(self) -> str:
+        """Get the string representation of the semantic version."""
+        return f"v{self.major}.{self.minor}.{self.patch}"
+
+
 # TODO: consider factoring this into a an ExperimentRun Class
 # which ought to include things like artifact location,
 # automatically uploading referenced artifacts, etc.
 def allocate_experiment(  # noqa: C901
-    experiment_id: str,
     experiment: Standalone[TInput, TOutput],
     specs: Sequence[TInput],
+    experiment_id: str | None = None,
+    version: SemVer
+    | Literal["bumpmajor", "bumpminor", "bumppatch", "keep"] = "bumpmajor",
+    overwrite_sort_index: bool = True,
+    overwrite_experiment_id: bool = True,
     recursion_map: RecursionMap | None = None,
     construct_specs_filekey: Callable[[str], str] | None = None,
     storage_settings: ScytheStorageSettings | None = None,
@@ -90,7 +168,35 @@ def allocate_experiment(  # noqa: C901
     """Allocate an experiment to a workflow run."""
     s3_client = s3_client or s3
     storage_settings = storage_settings or ScytheStorageSettings()
-
+    experiment_id = experiment_id or experiment.name
+    if not isinstance(version, SemVer):
+        prefix = f"{storage_settings.BUCKET_PREFIX}/{experiment_id}/"
+        # check s3 for any existing versions of the experiment by listing everything with
+        # the prefix
+        version_response = s3_client.list_objects_v2(
+            Bucket=storage_settings.BUCKET, Prefix=prefix, Delimiter="/"
+        )
+        # get all of the unique version strings by removing the prefix and grabbing everything
+        common_prefixes = version_response.get("CommonPrefixes", [])
+        prefixes = [d.get("Prefix", None) for d in common_prefixes]
+        prefixes = [p.split("/")[-2] for p in prefixes if p is not None]
+        versions = [SemVer.FromString(p) for p in prefixes]
+        highest_version = max(versions) if versions else None
+        version = (
+            (
+                highest_version.next_patch_version()
+                if version == "bumppatch"
+                else highest_version.next_minor_version()
+                if version == "bumpminor"
+                else highest_version.next_major_version()
+                if version == "bumpmajor"
+                else highest_version
+            )
+            if highest_version
+            else SemVer(major=1, minor=0, patch=0)
+        )
+    datetimestr = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    experiment_id = f"{experiment_id}/{version}/{datetimestr}"
     mismatching_types = [
         type(spec)
         for spec in specs
@@ -101,13 +207,16 @@ def allocate_experiment(  # noqa: C901
             expected_type=experiment.config.input_validator,
             actual_type=mismatching_types[0],
         )
-    for spec in specs:
-        spec.experiment_id = experiment_id
+    for i, spec in enumerate(specs):
+        if overwrite_experiment_id:
+            spec.experiment_id = experiment_id
+        if overwrite_sort_index:
+            spec.sort_index = i
 
     # handle local file transfer to s3
     # TODO: this will cause a race condition if multile files have the same name but
     # live in different directories.
-    # hence the check above
+    # hence the checks below
     def construct_input_artifact_key(pth: FilePath, field_name: str):
         return f"{storage_settings.BUCKET_PREFIX}/{experiment_id}/artifacts/{field_name}/{pth.name}"
 
