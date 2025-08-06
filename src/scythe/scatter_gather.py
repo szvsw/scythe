@@ -1,6 +1,8 @@
 """Fanout Handling."""
 
 import tempfile
+from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from functools import cached_property, partial
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal, TypeVar
@@ -14,7 +16,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 from scythe.base import BaseSpec, ExperimentInputSpec, ExperimentOutputSpec
 from scythe.hatchet import hatchet
 from scythe.registry import ExperimentRegistry, ExperimentStandaloneType, TOutput
-from scythe.storage import ScytheStorageSettings
+from scythe.settings import ScytheStorageSettings, timeout_settings
 from scythe.types import S3Url
 from scythe.utils.filesys import fetch_uri
 from scythe.utils.results import save_and_upload_parquets, transpose_dataframe_dict
@@ -253,14 +255,35 @@ class ScatterGatherResult(BaseModel):
 
     uris: dict[str, S3Url]
 
-    def to_gathered_experiment_runs(self) -> GatheredExperimentRuns:
+    def to_gathered_experiment_runs(
+        self,
+        logger: Callable[[str], None] | None = None,
+    ) -> GatheredExperimentRuns:
         """Convert the scatter gather result to a gathered experiment runs."""
-        dfs: dict[str, pd.DataFrame] = {}
-        for k, v in self.uris.items():
-            with tempfile.TemporaryDirectory() as tmpdir:
-                f = Path(tmpdir) / "specs.parquet"
-                res_path = fetch_uri(uri=v, local_path=f, use_cache=False)
-                dfs[k] = pd.read_parquet(res_path)
+
+        def fetch_and_read_parquet(
+            item: tuple[str, S3Url],
+        ) -> tuple[str, pd.DataFrame] | tuple[str, None]:
+            k, v = item
+            try:
+                with tempfile.TemporaryDirectory() as tmpdir:
+                    f = Path(tmpdir) / "specs.parquet"
+                    res_path = fetch_uri(uri=v, local_path=f, use_cache=False)
+                    return k, pd.read_parquet(res_path)
+            except Exception:
+                return k, None
+
+        with ThreadPoolExecutor(max_workers=8) as executor:
+            results = list(executor.map(fetch_and_read_parquet, self.uris.items()))
+
+        successful_results = [r for r in results if r[1] is not None]
+        failed_results = [r[0] for r in results if r[1] is None]
+        if logger:
+            for k in failed_results:
+                logger(f"Failed to fetch {k} from {self.uris[k]}")
+
+        dfs = dict(successful_results)
+
         return GatheredExperimentRuns(
             success=ExperimentOutputSpec(
                 dataframes=dfs,
@@ -269,7 +292,13 @@ class ScatterGatherResult(BaseModel):
         )
 
 
-@hatchet.task(name="scatter_gather", input_validator=ScatterGatherInput)
+@hatchet.task(
+    name="scythe_scatter_gather",
+    input_validator=ScatterGatherInput,
+    # TODO: these should be configurable at the experiment registry level?
+    execution_timeout=timeout_settings.SCATTER_GATHER_EXECUTION,
+    schedule_timeout=timeout_settings.SCATTER_GATHER_SCHEDULE,
+)
 async def scatter_gather(
     payload: ScatterGatherInput,
     ctx: Context,
@@ -283,7 +312,21 @@ async def scatter_gather(
         trigs, children_specs = payload.create_recursion_payloads(ctx.workflow_run_id)
         results = await scatter_gather.aio_run_many(trigs, return_exceptions=True)
         safe_results, error_df = sift_results(children_specs, results)
-        experiment_outputs = [r.to_gathered_experiment_runs() for r in safe_results]
+
+        def gather_experiment_outputs(
+            r: ScatterGatherResult,
+        ) -> GatheredExperimentRuns | None:
+            try:
+                return r.to_gathered_experiment_runs(logger=ctx.log)
+            except Exception as e:
+                ctx.log(f"Error gathering experiment outputs: {e}")
+                return None
+
+        with ThreadPoolExecutor(max_workers=8) as executor:
+            experiment_outputs = list(
+                executor.map(gather_experiment_outputs, safe_results)
+            )
+        experiment_outputs = [r for r in experiment_outputs if r is not None]
 
     dfs = [r.success.dataframes for r in experiment_outputs]
     errors = [r.errors for r in experiment_outputs if r.errors is not None]

@@ -1,6 +1,5 @@
 """Register experiments with Scythe."""
 
-from datetime import timedelta
 from typing import ClassVar, Protocol, TypeVar, cast, get_type_hints
 
 from hatchet_sdk import Context, Worker
@@ -10,6 +9,7 @@ from hatchet_sdk.utils.timedelta_to_expression import Duration
 
 from scythe.base import ExperimentInputSpec, ExperimentOutputSpec
 from scythe.hatchet import hatchet
+from scythe.settings import timeout_settings
 
 ExperimentStandaloneType = Standalone[ExperimentInputSpec, ExperimentOutputSpec]
 
@@ -76,8 +76,8 @@ class ExperimentRegistry:
         description: str | None = None,
         name: str | None = None,
         desired_worker_labels: dict[str, DesiredWorkerLabel] | None = None,
-        schedule_timeout: Duration = timedelta(minutes=5),
-        execution_timeout: Duration = timedelta(minutes=1),
+        schedule_timeout: Duration = timeout_settings.EXPERIMENT_SCHEDULE,
+        execution_timeout: Duration = timeout_settings.EXPERIMENT_EXECUTION,
         retries: int = 1,
         overwrite_log_method: bool = True,
         inject_workflow_run_id: bool = True,

@@ -20,7 +20,7 @@ from scythe.scatter_gather import (
     ScatterGatherResult,
     scatter_gather,
 )
-from scythe.storage import ScytheStorageSettings
+from scythe.settings import ScytheStorageSettings
 from scythe.types import S3Url
 from scythe.utils.results import save_and_upload_parquets
 
