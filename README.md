@@ -7,7 +7,7 @@
 [![License](https://img.shields.io/github/license/szvsw/scythe)](https://img.shields.io/github/license/szvsw/scythe)
 
 Scythe is a lightweight tool which helps you seed and reap (scatter and gather)
-emabarassingly parallel experiments via the asynchronous distributed queue [Hatchet](https://hatchet.run).
+embarrassingly parallel experiments via the asynchronous distributed queue [Hatchet](https://hatchet.run).
 
 > The project is still in the VERY EARLY stages, and will likely evolve quite a bit in the
 > second half of 2025.
@@ -366,5 +366,3 @@ type: object
 - automatic s3/https conversion to local in middleware
 - optional handling of s3/https uris similarly to local on allocation (i.e. copying into experiment dir)
 - consider an abc or protocol on input with a `run` method.
-- toggleable scoping by date
-- toggleable versioning
