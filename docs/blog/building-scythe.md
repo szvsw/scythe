@@ -320,9 +320,7 @@ The index of the dataframe will itself be a dataframe with the input specs and s
 
 Additionally, in your bucket, you will find a `manifest.yml` file as well as an `input_artifacts.yml` and `experiment_io_spec.yml`.
 
-`manifest.yml`
-
-```yaml
+```yaml title="manifest.yml"
 experiment_id: building_energy/v1.0.0/2025-07-23_12-59-51
 experiment_name: scythe_experiment_simulate_energy
 input_artifacts: s3://mit-sdl/scythe/building_energy/v1.0.0/2025-07-23_12-59-51/input_artifacts.yml
@@ -331,9 +329,7 @@ specs_uri: s3://mit-sdl/scythe/building_energy/v1.0.0/2025-07-23_12-59-51/specs.
 workflow_run_id: f764ef33-a377-4572-a398-a2dc56a0810f
 ```
 
-`input_artifacts.yml`
-
-```yaml
+```yaml title="input_artifacts.yml"
 files:
   design_day_file:
     - s3://mit-sdl/scythe/building_energy/v1.0.0/2025-07-23_12-59-51/artifacts/design_day_file/USA_MA_Boston.Logan_TMYx.ddy
@@ -343,9 +339,7 @@ files:
     - s3://mit-sdl/scythe/building_energy/v1.0.0/2025-07-23_12-59-51/artifacts/weather_file/USA_CA_Los.Angeles.LAX_TMYx.epw
 ```
 
-`experiment_io_spec.yml`
-
-```yaml
+```yaml title="experiment_io_spec.yml"
 $defs:
   BuildingSimulationInput:
     additionalProperties: true
@@ -513,7 +507,10 @@ simulations). We also want good records of what the specifications for the exper
 both at the interface level (i.e. what was the configuration/meaning of inputs and outputs)
 and at the instance level (which specific values of the interfaces' inputs were used).
 
-### Divide and Conquer: maximizing allocation/collection throughput with recursive subdivision
+### Divide and Conquer
+
+Scythe uses a divide-and-conquer strategy to maximize allocation/collection throughput with
+recursive subdivision. Let's understand why it helps by working through an example.
 
 Let's say we have 1e7 simulations to run, and each simulation takes 2-3 seconds to complete.
 
