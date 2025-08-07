@@ -17,7 +17,7 @@ from scythe.base import BaseSpec, ExperimentInputSpec, ExperimentOutputSpec
 from scythe.hatchet import hatchet
 from scythe.registry import ExperimentRegistry, ExperimentStandaloneType, TOutput
 from scythe.settings import ScytheStorageSettings, timeout_settings
-from scythe.types import S3Url
+from scythe.type_helpers import S3Url
 from scythe.utils.filesys import fetch_uri
 from scythe.utils.results import save_and_upload_parquets, transpose_dataframe_dict
 

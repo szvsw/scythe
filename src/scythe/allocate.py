@@ -22,7 +22,7 @@ from scythe.scatter_gather import (
     scatter_gather,
 )
 from scythe.settings import ScytheStorageSettings
-from scythe.types import S3Url
+from scythe.type_helpers import S3Url
 from scythe.utils.results import save_and_upload_parquets
 
 if TYPE_CHECKING:

@@ -18,7 +18,7 @@ from pydantic import (
 )
 from pydantic.json_schema import SkipJsonSchema
 
-from scythe.types import FileReference
+from scythe.type_helpers import FileReference
 from scythe.utils.filesys import fetch_uri
 from scythe.utils.results import serialize_df_dict
 

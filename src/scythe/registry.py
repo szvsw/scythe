@@ -1,5 +1,8 @@
 """Register experiments with Scythe."""
 
+import inspect
+import tempfile
+from pathlib import Path
 from typing import ClassVar, Protocol, TypeVar, cast, get_type_hints
 
 from hatchet_sdk import Context, Worker
@@ -35,20 +38,42 @@ class ExperimentTypeExists(Exception):
         super().__init__(f"Experiment {name} already exists")
 
 
-class ExperimentFunction(Protocol[TInput, TOutput]):
-    """A function that takes an input spec and returns an output spec."""
+class ExperimentFunctionWithoutTempdir(Protocol[TInput, TOutput]):
+    """A function that can run experiments, with or without tempdir support."""
 
     def __call__(self, input_spec: TInput) -> TOutput:
-        """Invoke the experiment function.
-
-        Args:
-            input_spec: The input spec for the experiment.
-        """
+        """Invoke the experiment function with flexible signature."""
         ...
 
     def __name__(self) -> str:
         """The name of the experiment function."""
         ...
+
+
+class ExperimentFunctionWithTempdir(Protocol[TInput, TOutput]):
+    """A function that can run experiments, with tempdir support."""
+
+    def __call__(self, input_spec: TInput, tempdir: Path) -> TOutput:
+        """Invoke the experiment function with flexible signature."""
+        ...
+
+    def __name__(self) -> str:
+        """The name of the experiment function."""
+        ...
+
+
+ExperimentFunction = (
+    ExperimentFunctionWithoutTempdir[TInput, TOutput]
+    | ExperimentFunctionWithTempdir[TInput, TOutput]
+)
+
+
+def _function_accepts_tempdir(fn_: ExperimentFunction) -> bool:
+    """Check if a function accepts a tempdir parameter."""
+    sig = inspect.signature(fn_)
+    return ("tempdir" in sig.parameters) and (
+        sig.parameters["tempdir"].annotation is Path
+    )
 
 
 class ExperimentRegistry:
@@ -117,9 +142,17 @@ class ExperimentRegistry:
                     input_.log = lambda msg: context.log(msg)
                 if inject_workflow_run_id:
                     input_.workflow_run_id = context.workflow_run_id
-                output = fn(input_)
-                output.add_scalars(input_)
-                return output
+                with tempfile.TemporaryDirectory() as temp_dir:
+                    if _function_accepts_tempdir(fn):
+                        fn_ = cast(ExperimentFunctionWithTempdir[TInput, TOutput], fn)
+                        output = fn_(input_, tempdir=Path(temp_dir))
+                    else:
+                        fn_ = cast(
+                            ExperimentFunctionWithoutTempdir[TInput, TOutput], fn
+                        )
+                        output = fn_(input_)
+                    output.add_scalars(input_)
+                    return output
 
             if worker:
                 worker.register_workflow(task)
@@ -138,6 +171,3 @@ class ExperimentRegistry:
     def experiments(cls) -> list[ExperimentStandaloneType]:
         """Get all experiments."""
         return list(cls._experiments_dict.values())
-
-
-# if __name__ == "__main__":
