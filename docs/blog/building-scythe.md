@@ -199,10 +199,10 @@ following structure:
 │     │     ├──── input_artifacts.yml
 │     │     ├──── specs.pq
 │     │     ├──── artifacts/
-│     │     │     ├──── <field-1>/
+│     │     │     ├──── <file-ref-field-1>/
 │     │     │     │     ├──── file1.ext
 │     │     │     │     └──── file2.ext
-│     │     │     └──── <field-1>/
+│     │     │     └──── <file-ref-field-1>/
 │     │     │     │     ├──── file1.ext
 │     │     │     │     └──── file2.ext
 │     │     │     ...
@@ -211,9 +211,20 @@ following structure:
 │     │     │     └──── output/
 │     │     ├──── final/
 │     │     │     ├──── scalars.pq
+│     │     │     ├──── result_file_refs.pq
 │     │     │     ├──── <user-dataframe>.pq
 │     │     │     ├──── <user-dataframe>.pq
+│     │     │     ...
+│     │     ├──── results/
+│     │     │     ├──── <file-ref-field-1>/
+│     │     │     │     ├──── <simulation-1-run-id>.ext
+│     │     │     │     └──── <simulation-2-run-id>.ext
+│     │     │     └──── <file-ref-field-2>/
+│     │     │     │     ├──── <simulation-1-run-id>.ext
+│     │     │     │     └──── <simulation-2-run-id>.ext
+│     │     │     ...
 │     ├──── <datetime>/
+│     ...
 ├──── <version>/
 ...
 ```
@@ -231,13 +242,17 @@ ultimately be converted into dataframes (where the defined input fields are colu
 Similarly, the output schema fields will be used as columns of results dataframes
 (and the input dataframe will actualy be used as a MultiIndex).
 
-Note that `FileReference` inputs, which can be `HttpUrl | S3Url | Path`, which are of
+Note that `FileReference` inputs, which can be `HttpUrl | S3Url | pathlib.Path`, which are of
 type `Path` will automatically be uploaded to S3 and re-referenced as S3 URIs.
+
+Similarly, `FileReference` outputs which are of type `Path` will automatically get transferred
+to S3 when each simulation task finishes and re-referenced as URIs, and registered in a
+separate table of file outputs.
 
 ```py
 from pydantic import Field
 from scythe.base import ExperimentInputSpec, ExperimentOutputSpec
-from scythe.types import FileReference
+from scythe.type_helpers import FileReference
 
 class BuildingSimulationInput(ExperimentInputSpec):
     """Simulation inputs for a building energy model."""
@@ -246,7 +261,7 @@ class BuildingSimulationInput(ExperimentInputSpec):
     lpd: float = Field(default=..., description="Lighting power density [W/m2]", ge=0, le=20)
     setpoint: float = Field(default=..., description="Thermostat setpoint [deg.C]", ge=12, le=30)
     economizer: Literal["NoEconomizer", "DifferentialDryBulb", "DifferentialEnthalpy"] = Field(default=..., description="The type of economizer to use")
-    weather_file: FileReference = Field(default=..., description="Weather file [.epw]")
+    weather_file: FileReference = Field(default=..., description="Weather file [.epw]") # (1)!
     design_day_file: FileReference = Field(default=..., description="Weather file [.ddy]")
 
 
@@ -259,7 +274,11 @@ class BuildingSimulationOutput(ExperimentOutputSpec):
     equipment: float = Field(default=..., description="Annual equipment energy usage, kWh/m2", ge=0)
     fans: float = Field(default=..., description="Annual fans energy usage, kWh/m2", ge=0)
     pumps: float = Field(default=..., description="Annual pumps energy usage, kWh/m2", ge=0)
+    timeseries: FileReference = Field(default=..., description="High-res Timeseries data.") # (2)!
 ```
+
+1. When the experiment is allocated, if `weather_file` or `design_day_file` are `pathlib.Path` objects (as opposed to `S3Url` or `HttpUrl`), they will be automatically uploaded to S3 and re-referenced.
+2. If `timeseries` is a `pathlib.Path` object (as opposed to `S3Url` or `HttpUrl`, it will be automatically uploaded to S3 and re-referenced).
 
 The schemas above will be exported into your results bucket as `experiment_io_spec.yaml`
 including any docstrings and descriptions, following [JSON Schema](https://docs.pydantic.dev/latest/concepts/json_schema/).
@@ -274,7 +293,7 @@ argument (the schema defined previously) and can only return a single output ins
 the previously defined output schema (though additional dataframes can be stored in the
 `dataframes` field inherited from the base `ExperimentOutputSpec`.).
 
-```py
+```py title="experiments/building_energy.py"
 from scythe.registry import ExperimentRegistry
 
 @ExperimentRegistry.Register()
@@ -295,11 +314,116 @@ def simulate_energy(input_spec: BuildingSimulationInput) -> BuildingSimulationOu
     )
 ```
 
-Since `BuildingSimulationInput` inherited from `ExperimentInputSpec`, some methods automatically exist on the class, e.g. `log` for writing messages to the worker logs, or methods for fetching common artifact files from remote resources like S3 or a web request into a cacheable filesystem.
+Since `BuildingSimulationInput` inherited from `ExperimentInputSpec`, some methods
+automatically exist on the class, e.g. `log` for writing messages to the worker logs, or
+methods for fetching common artifact files from remote resources like S3 or a web request
+into a cacheable filesystem.
 
-**_TODO: document artifact fetching, writing artifacts per experiment_**
+You can also define your method with an additional `tempdir: Path` argument, which will be
+an automatically created temporary directory (individualized for each task run)
+that gets passed in which you can use to e.g. write output files or otherwise use as a
+working directory which gets automatically cleaned up when the task finishes:
 
-**_TODO: document allocating experiments, infra_**
+```py title="experiments/building_energy.py"
+from pathlib import Path
+
+@ExperimentRegistry.Register()
+def simulate_energy(input_spec: BuildingSimulationInput, tempdir: Path) -> BuildingSimulationOutput:
+    ...
+    timeseries_fpath = tempdir / "timeseries.pq"
+    timeseries.to_parquet(timeseries_fpath)
+
+    return BuildingSimulationOutput(
+        ...
+        timeseries=timeseries_fpath # (1)!
+    )
+```
+
+1. This file (and any other fields which are `FileReference->pathlib.Path`) will automatically get uploaded to S3 and re-referenced, and
+   an output dataframe at the experiment level will be generated which stores a list of all referenced files across all simulations (e.g. for use in a dataloader).
+
+This is particularly useful when you might be writing out large files for every individual
+simulation which you do not want to combine into a single large results file across all task
+runs (e.g. with many channels high-resolution timeseries data or images) and which you would prefer
+to load in the future from the effective data warehouse that each experiment creates. Scythe
+will automatically transfer these from the local file system to the S3 bucket when
+the experiment task run finishes and store references to the outputs in a single dataframe for all the individual simulation runs for easy use in e.g. a dataloader.
+
+**_TODO: document artifact fetching_**
+
+In order to run your parallel experiments, you will need to generate a population of samples
+from your design space. For now, we'll assume that you've done this with something like
+numpy, pandas, or your favorite design-of-experiments lib. It might look something like this.
+
+```py title="sample.py"
+from pathlib import Path
+
+import numpy as np
+import pandas as pd
+
+from experiments.building_energy import BuildingSimulationInput
+
+def sample(n: int = 100) -> list[BuildingSimulationInput]:
+    r_value = np.random.uniform(0, 15, size=n)
+    lpd = np.random.uniform(0, 20, size=n)
+    setpoint = np.random.uniform(12, 30, size=n)
+    economizer = np.random.choice(
+        ["NoEconomizer", "DifferentialDryBulb", "DifferentialEnthalpy"], size=n
+    )
+    weather_file = [
+        Path(name)
+        for name in np.random.choice(
+            [f"{name}" for name in Path("artifacts").glob("*.epw")], size=n
+        )
+    ]
+    design_day_file = [f"artifacts/{Path(name).stem}.ddy" for name in weather_file]
+    df = pd.DataFrame( # (1)!
+        {
+            "r_value": r_value,
+            "lpd": lpd,
+            "setpoint": setpoint,
+            "economizer": economizer,
+            "weather_file": weather_file,
+            "design_day_file": design_day_file,
+            "experiment_id": "placeholder", # (2)!
+            "sort_index": list(range(n)),
+        }
+    )
+    specs = [
+        BuildingSimulationInput.model_validate(row.to_dict())
+        for _, row in df.iterrows()
+    ]
+    return specs
+```
+
+1. I like to create a data frame and then convert to models, but it does not matter so much either way. You could directly create the models first if preferred.
+2. This placeholder will get overwritten when we allocate the experiment by default with a fully resolved identifier.
+
+Now, we are finally ready to run our experiment!
+
+```py title="allocate.py"
+from scythe.allocate import BaseExperiment
+
+from experiments.building_energy import simulate_energy
+from sample import sample
+
+if __name__ == "__main__":
+
+    experiment = BaseExperiment(
+        experiment=simulate_energy
+
+    )
+    specs = sample(10)
+
+    run, ref = experiment.allocate(
+        specs,
+        version="bumpminor", # (1)!
+    )
+
+
+```
+
+_TODO: document `run` and `ref` objects_
 
 After the experiment is finished running all tasks, it will automatically produce an output file `scalars.pq` with all of the results defined on your output schema for each of the individual simulations that were executed.
 
@@ -320,6 +444,8 @@ The index of the dataframe will itself be a dataframe with the input specs and s
 |    17.2 |    15.3 |     10.1 |      13.8 | 14.2 |   1.4 |
 |    21.7 |     5.4 |      9.2 |       5.8 | 10.3 |   2.0 |
 |    19.5 |     8.9 |     12.5 |      13.7 |  8.9 |   0.9 |
+
+If any of the output fields were of type `FileReference`, there will be an additional parquet file written to the bucket called `result_file_refs.pq` with the same MultiIndex as `scalars.pq` and whose columns are the names of the `FileReference` fields and whose values are the URIs of those references.
 
 **_TODO: document how additional dataframes of results are handled._**
 

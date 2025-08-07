@@ -5,22 +5,28 @@ import importlib.resources
 import json
 import logging
 from pathlib import Path
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 import pandas as pd
 from pydantic import (
     AnyUrl,
     BaseModel,
     Field,
-    FilePath,
+    HttpUrl,
     field_serializer,
     field_validator,
 )
 from pydantic.json_schema import SkipJsonSchema
 
-from scythe.type_helpers import FileReference
+from scythe.settings import ScytheStorageSettings
+from scythe.type_helpers import FileReference, S3Url
 from scythe.utils.filesys import fetch_uri
 from scythe.utils.results import serialize_df_dict
+
+if TYPE_CHECKING:
+    from mypy_boto3_s3.client import S3Client
+else:
+    S3Client = object
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +34,37 @@ logger = logging.getLogger(__name__)
 # TODO: should experiment ids be uuid trims?
 # or should they be human readable (creating unicity issues...)?
 # or should they also relate to hatchet auto-generated data?
-class BaseSpec(BaseModel, extra="allow", arbitrary_types_allowed=True):
+class FileReferenceMixin(BaseModel):
+    """A mixin for file reference fields."""
+
+    @classmethod
+    def _file_reference_fields(cls) -> list[str]:
+        """Get the file reference fields."""
+        annotations = cls.model_fields
+        return [k for k, v in annotations.items() if v.annotation is FileReference]
+
+    @property
+    def _local_artifact_file_paths(self) -> dict[str, Path]:
+        """Get the local source file paths."""
+        data = self.model_dump()
+        return {
+            k: data[k]
+            for k in self._file_reference_fields()
+            if isinstance(data[k], Path)
+        }
+
+    @property
+    def remote_artifact_file_paths(self) -> dict[str, HttpUrl | S3Url]:
+        """Get the remote source file paths."""
+        data = self.model_dump()
+        return {
+            k: data[k]
+            for k in self._file_reference_fields()
+            if not isinstance(data[k], Path)
+        }
+
+
+class BaseSpec(FileReferenceMixin, extra="allow", arbitrary_types_allowed=True):
     """A base spec for running a simulation.
 
     The main features are utilities to fetch files from uris
@@ -131,6 +167,21 @@ class ExperimentInputSpec(BaseSpec):
     root_workflow_run_id: str | None = Field(
         default=None, description="The root workflow run id of the leaf."
     )
+    storage_settings: ScytheStorageSettings | None = Field(
+        default=None, description="The storage settings to use."
+    )
+
+    @property
+    def prefix(self) -> str:
+        """Get the scoped key for the spec."""
+        if self.storage_settings is None:
+            msg = "`storage_settings` is not set, so we can't construct a scoped key"
+            raise ValueError(msg)
+        return f"{self.storage_settings.BUCKET_PREFIX}/{self.experiment_id}"
+
+    @property
+    def _index_excluded_fields(self) -> set[str]:
+        return {"storage_settings"}
 
     def make_multiindex(
         self,
@@ -154,16 +205,13 @@ class ExperimentInputSpec(BaseSpec):
                 n_rows, additional_index_data
             )
 
-        index_data: list[dict[str, Any]] = [
-            self.model_dump(mode="json") for _ in range(n_rows)
-        ]
+        dumped_index = self.model_dump(mode="json", exclude=self._index_excluded_fields)
+        index_data: list[dict[str, Any]] = [dumped_index for _ in range(n_rows)]
 
         if isinstance(additional_index_data, dict):
-            if any(k in self.model_dump(mode="json") for k in additional_index_data):
+            if any(k in dumped_index for k in additional_index_data):
                 overlapping_keys = [
-                    k
-                    for k in additional_index_data
-                    if k in self.model_dump(mode="json")
+                    k for k in additional_index_data if k in dumped_index
                 ]
                 raise ExperimentIndexAdditionalDataOverlapsWithSpecError(
                     overlapping_keys
@@ -183,6 +231,7 @@ class ExperimentInputSpec(BaseSpec):
         try:
             json.dumps(index_data)
         except Exception as e:
+            self.log(f"Index data is not serializable: {index_data}")
             raise ExperimentIndexNotSerializableError(self.__class__) from e
 
         df = pd.DataFrame(index_data)
@@ -191,21 +240,12 @@ class ExperimentInputSpec(BaseSpec):
 
         return pd.MultiIndex.from_frame(df)
 
-    @classmethod
-    def _file_reference_fields(cls) -> list[str]:
-        """Get the file reference fields."""
-        annotations = cls.model_fields
-        return [k for k, v in annotations.items() if v.annotation is FileReference]
-
-    @property
-    def _local_input_artifact_file_paths(self) -> dict[str, FilePath]:
-        """Get the local source file paths."""
-        data = self.model_dump()
-        return {
-            k: data[k]
-            for k in self._file_reference_fields()
-            if isinstance(data[k], Path)
-        }
+    def construct_output_key(self, field_name: str, fpath: Path) -> str:
+        """Construct an output key for a file."""
+        sort_str = f"{self.sort_index:08d}"
+        fname = f"{self.workflow_run_id or sort_str}{fpath.suffix}"
+        base = f"{self.experiment_id}/results/{field_name}/{fname}"
+        return base
 
 
 class ScalarInDataframesError(Exception):
@@ -217,11 +257,20 @@ class ScalarInDataframesError(Exception):
         super().__init__("`scalars` key is already in `dataframes`")
 
 
-class ExperimentOutputSpec(BaseModel, arbitrary_types_allowed=True):
+class ResultFileRefsInDataframesError(Exception):
+    """An error for when a result file ref is in the dataframes."""
+
+    def __init__(self, result_file_refs: Any):
+        """Initialize the error."""
+        self.result_file_refs = result_file_refs
+        super().__init__("`result_file_refs` key is already in `dataframes`")
+
+
+class ExperimentOutputSpec(FileReferenceMixin, arbitrary_types_allowed=True):
     """A spec for the output of a leaf workflow."""
 
-    # TODO: make this extensible with scalar columns
     dataframes: SkipJsonSchema[dict[str, pd.DataFrame]] = Field(default_factory=dict)
+    # TODO: consider adding an additional_files key
 
     @field_validator("dataframes", mode="before")
     def validate_dataframes(cls, v):
@@ -242,16 +291,76 @@ class ExperimentOutputSpec(BaseModel, arbitrary_types_allowed=True):
         """Serialize the dataframes via serialization."""
         return serialize_df_dict(v)
 
-    def add_scalars(self, input_spec: ExperimentInputSpec):
+    @property
+    def _scalar_excluded_fields(self) -> set[str]:
+        """Get the fields to exclude from the scalar data."""
+        # TODO: we should also exclude things that aren't really scalars!
+        return {"dataframes", *self._file_reference_fields()}
+
+    def _add_scalars(self, input_spec: ExperimentInputSpec):
         """Update the dataframes with the input spec."""
-        scalar_data = self.model_dump(mode="json", exclude={"dataframes"})
+        scalar_data = self.model_dump(mode="json", exclude=self._scalar_excluded_fields)
         if len(scalar_data) == 0:
             return
         results = [scalar_data]
-        multi_index = input_spec.make_multiindex(
-            results, n_rows=1, include_sort_subindex=False
-        )
+        multi_index = input_spec.make_multiindex(n_rows=1, include_sort_subindex=False)
         df = pd.DataFrame(results, index=multi_index)
         if "scalars" in self.dataframes:
             raise ScalarInDataframesError(self.dataframes["scalars"])
         self.dataframes["scalars"] = df
+
+    def _transfer_files(
+        self,
+        input_spec: ExperimentInputSpec,
+        storage_settings: ScytheStorageSettings | None,
+        s3_client: S3Client,
+    ):
+        """Transfer the files to the output spec."""
+        # TODO: consider adding `additional_files` key
+        # currently, that would unfortunately require a separate organizational structure
+        # in the bucket, since right now we do field/workflow_run_id.suffix,
+        # but for additional files, we probably would want to do
+        # additional_files/workflow_run_id/{path.name}
+        if storage_settings is None:
+            input_spec.log("No storage settings provided, skipping file transfer.")
+            return
+        local_output_artifact_paths = self._local_artifact_file_paths
+        non_local_output_artifact_uris = self.remote_artifact_file_paths
+        local_output_artifact_destinations = {
+            k: f"{storage_settings.BUCKET_PREFIX}/{input_spec.construct_output_key(k, v)}"
+            for k, v in local_output_artifact_paths.items()
+        }
+        # TODO: we could possibly speed this up with a threadpool executor
+        for k in local_output_artifact_destinations:
+            local_pth = local_output_artifact_paths[k]
+            destination_key = local_output_artifact_destinations[k]
+            s3_client.upload_file(
+                Filename=local_pth.as_posix(),
+                Bucket=storage_settings.BUCKET,
+                Key=destination_key,
+            )
+
+        local_output_artifact_uris = {
+            k: S3Url(f"s3://{storage_settings.BUCKET}/{v}")
+            for k, v in local_output_artifact_destinations.items()
+        }
+        all_output_artifact_uris: dict[str, FileReference] = {
+            **local_output_artifact_uris,
+            **non_local_output_artifact_uris,
+        }
+
+        for k, v in local_output_artifact_uris.items():
+            setattr(self, k, v)
+
+        # now we want to create a dataframe formatted similarly to scalars
+        if len(all_output_artifact_uris) == 0:
+            return
+        all_output_artifact_uris_as_str = {
+            k: str(v) for k, v in all_output_artifact_uris.items()
+        }
+        results = [all_output_artifact_uris_as_str]
+        multi_index = input_spec.make_multiindex(n_rows=1, include_sort_subindex=False)
+        df = pd.DataFrame(results, index=multi_index)
+        if "result_file_refs" in self.dataframes:
+            raise ResultFileRefsInDataframesError(self.dataframes["result_file_refs"])
+        self.dataframes["result_file_refs"] = df

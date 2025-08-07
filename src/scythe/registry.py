@@ -5,6 +5,7 @@ import tempfile
 from pathlib import Path
 from typing import ClassVar, Protocol, TypeVar, cast, get_type_hints
 
+import boto3
 from hatchet_sdk import Context, Worker
 from hatchet_sdk.labels import DesiredWorkerLabel
 from hatchet_sdk.runnables.workflow import Standalone
@@ -74,6 +75,9 @@ def _function_accepts_tempdir(fn_: ExperimentFunction) -> bool:
     return ("tempdir" in sig.parameters) and (
         sig.parameters["tempdir"].annotation is Path
     )
+
+
+s3_client = boto3.client("s3")
 
 
 class ExperimentRegistry:
@@ -151,7 +155,12 @@ class ExperimentRegistry:
                             ExperimentFunctionWithoutTempdir[TInput, TOutput], fn
                         )
                         output = fn_(input_)
-                    output.add_scalars(input_)
+                    output._add_scalars(input_)
+                    output._transfer_files(
+                        input_,
+                        input_.storage_settings,
+                        s3_client,
+                    )
                     return output
 
             if worker:

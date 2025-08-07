@@ -154,6 +154,8 @@ class ScatterGatherInput(BaseSpec):
     ) -> GatheredExperimentRuns:
         """Run the actual experiments and collect results."""
         specs = self.specs
+        for spec in specs:
+            spec.storage_settings = self.storage_settings
         inputs = [
             self.standalone.create_bulk_run_item(
                 input=spec,
@@ -396,7 +398,10 @@ def sift_results(
     if error_specs:
         error_msgs = [str(r) for r in results if isinstance(r, BaseException)]
         error_multi_index = pd.MultiIndex.from_frame(
-            pd.DataFrame([r.model_dump(mode="json") for r in error_specs])
+            pd.DataFrame([
+                r.model_dump(mode="json", exclude={"storage_settings"})
+                for r in error_specs
+            ])
         )
         error_df = pd.DataFrame(
             {"missing": [False], "msg": error_msgs}, index=error_multi_index
