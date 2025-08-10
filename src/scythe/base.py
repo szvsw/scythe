@@ -9,8 +9,10 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
 try:
-    from typing import Self  # Python 3.11+
+    # python 3.11+
+    from typing import Self  # pyright: ignore [reportAttributeAccessIssue]
 except ImportError:
+    # python 3.10
     from typing_extensions import Self  # noqa: UP035
 
 import pandas as pd
