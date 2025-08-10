@@ -278,7 +278,7 @@ class BuildingSimulationOutput(ExperimentOutputSpec):
 ```
 
 1. When the experiment is allocated, if `weather_file` or `design_day_file` are `pathlib.Path` objects (as opposed to `S3Url` or `HttpUrl`), they will be automatically uploaded to S3 and re-referenced.
-2. If `timeseries` is a `pathlib.Path` object (as opposed to `S3Url` or `HttpUrl`, it will be automatically uploaded to S3 and re-referenced).
+2. If `timeseries` is a `pathlib.Path` object (as opposed to `S3Url` or `HttpUrl`), it will be automatically uploaded to S3 and re-referenced.
 
 The schemas above will be exported into your results bucket as `experiment_io_spec.yaml`
 including any docstrings and descriptions, following [JSON Schema](https://docs.pydantic.dev/latest/concepts/json_schema/).
@@ -310,6 +310,7 @@ def simulate_energy(input_spec: BuildingSimulationInput) -> BuildingSimulationOu
         equipment=...,
         fans=...,
         pumps=...
+        timeseries=...,
         dataframes=...,
     )
 ```
@@ -319,7 +320,7 @@ automatically exist on the class, e.g. `log` for writing messages to the worker 
 methods for fetching common artifact files from remote resources like S3 or a web request
 into a cacheable filesystem.
 
-You can also define your method with an additional `tempdir: Path` argument, which will be
+You can also define your simulation function with an additional `tempdir: Path` argument, which will be
 an automatically created temporary directory (individualized for each task run)
 that gets passed in which you can use to e.g. write output files or otherwise use as a
 working directory which gets automatically cleaned up when the task finishes:
@@ -399,7 +400,15 @@ def sample(n: int = 100) -> list[BuildingSimulationInput]:
 1. I like to create a data frame and then convert to models, but it does not matter so much either way. You could directly create the models first if preferred.
 2. This placeholder will get overwritten when we allocate the experiment by default with a fully resolved identifier.
 
-Now, we are finally ready to run our experiment!
+Now, we are finally ready to run our experiment! We will create an `BaseExperiment` object
+in order to specify the versioning information for the experiment run we are about to initiate
+via its `allocate` command, which will handle setting up the directory in our bucket,
+serializing payloads, automatically transferring input artifacts to S3, and more. By
+default, the experiment name used in S3 will be the name of the simulation task, and the
+version will be autoresolved based off of previous runs in the bucket via `bumpmajor`,
+`bumpminor`, `bumppatch` or `keep` - regardless of which is selected each run will still
+be scoped by the initiation time, so even when using `keep`, you can have multiple experiment runs
+for the same version. You can also pass in a version manually as a `scythe.allocate.SemVer`.
 
 ```py title="allocate.py"
 from scythe.allocate import BaseExperiment
@@ -423,7 +432,13 @@ if __name__ == "__main__":
 
 ```
 
-_TODO: document `run` and `ref` objects_
+1. This will auto-resolve the most recent experiment run of the same name in the bucket
+   and increment the version, e.g. `v1.2.3` with `bumpminor` will transition to `v.1.3.0`.
+
+The `run` object is a `scythe.allocate.ExperimentRun` while the `ref` is a
+`hatchet_sdk.runnables.workflow.TaskRunRef`. You can wait for the result to finish with
+either `ref.result()` (blocking) or `await ref.aio_result()` (async). The final task result
+will contain the URIs of any aggregated dataframes written to the buket.
 
 After the experiment is finished running all tasks, it will automatically produce an output file `scalars.pq` with all of the results defined on your output schema for each of the individual simulations that were executed.
 
@@ -638,7 +653,97 @@ simulations). We also want good records of what the specifications for the exper
 both at the interface level (i.e. what was the configuration/meaning of inputs and outputs)
 and at the instance level (which specific values of the interfaces' inputs were used).
 
-### Divide and Conquer
+### Core design decisions
+
+#### Middleware for individual simulation tasks
+
+Hatchet already relies on decorators to let users define tasks - the core of Scythe's
+most important features from a user perspective are really just creating an additional level
+of decoration so that we can add some convenience middleware functionality to run before
+and after a simulation run.
+
+You normally define a Hatchet task like this:
+
+```py
+@hatchet.task(...)
+def my_task(input_spec: T, ctx: Context) -> RT:
+  ...
+  return RT(...)
+```
+
+but we want some middleware to run, so we will shadow the Hatchet task decorator with our
+own which will work effectively the same as the Hatchet one (up to whichever Hatchet task
+config args we expose) by constructing the same task as the user would have, but because
+we control the Hatchet task creation, we can choose to run our middleware before and after
+the user's function is executed. Another important aspect is that it allows us to achieve type-safety to ensure that the user's simulation function's input and output types subclass `ExperimentInputSpec` and `ExperimentOutputSpec` respectively.
+
+```py title="scythe/registry.py"
+class ExperimentRegistry:
+  ...
+
+  @classmethod
+  def Register(
+    ...args, # (1)!
+    ...passthrough_args, # (2)!
+  ):
+
+    def decorator(fn: Callable[[T,], RT]): # (3)!
+
+      @hatchet.task(...passthrough_args) # (4)!
+      def task(input_spec: T, ctx: Context) -> RT:
+
+        # Set up a working directory
+        with tempdir.TemporaryDirectory as temp_dir:
+
+          # Middleware execution happens here, like fetching input artifacts to local dir
+          ...
+
+          # Call the user supplied function
+          result: RT = fn(T, tempdir=Path(tempdir))
+
+          # More middleware execution happens here, like uploading FileReferences to S3
+          ...
+
+        return result
+
+      return task
+
+
+    return decorator # (5)!
+```
+
+1. We will have some arguments to our decorator which we can use to control the behavior of Scythe.
+2. We will have some other arguments which we will pass through to Hatchet's `task` decorator.
+3. We will enforce type safety generically here to ensure that the signature of the function defined by the user accepts a subclass of `ExperimentInputSpec` and returns a subclass of `ExperimentOutputSpec` so that we can
+4. Here we create the Hatchet task for a function which we control which will wrap and invoke the user-supplied function.
+5. When the user calls our decorator function with arguments, we return the uncalled inner decorator function, which in turn gets called by Python automatically on their decorated function; this finally returns the Hatchet task version of that function.
+
+This middleware will be responsible for the following:
+
+1. Setting up a temporary directory which the simulation function can use as a safe working dir which will be automatically cleaned up.
+1. Pulling any referenced artifacts into a locally scoped dir for use in the simulation function while leveraging a filecache to avoid excessive data ingress when lots of tasks use commonly shared files (e.g. weather files for my case of building energy simulations).
+1. Taking the result, converting the scalar outputs
+   into a well-formatted dataframe with a consistently structured index based off of the input payload so that it can be combined
+   with the results of other simulations into a large aggregated dataframe of outputs across all runs
+1. Transferring any file-based outputs to S3 and referencing them in an artifact output tracking dataframe.
+
+While the main fields of the output class will get automatically converted into well-structured data
+for aggregation by the scatter/gather task with results from all the other simulations,
+we still might have some individual file based outputs per simulation (maybe logs, maybe images or timeseries etc.). If each simulation generates large amounts of data (e.g. high-resolution hourly timeseries
+data or images), it's probably not a great idea to try to collect all of this into a single
+file, like we do with the `scalars` or user dataframes. For instance, if each building energy
+simulation outputs 15-min timesteps of heating, cooling, lighting, equipment, and hot water
+loads for a whole year in 32bit floats, that would be `15 * 8760 * 5 * 4 ~= 2.6e6 = 2.6 MB`
+If we have just 1e6 simulations, then we are already at 2.6 TB of raw data. Most likely a better
+approach would be to first be judicious about what you actually need - e.g. maybe you only
+need hourly data for just heating and cooling, and maybe you can stochastically drop some
+fraction of results, etc. In any case, you stil probably do not want to combine all of the results
+into a single output dataframe/record. Instead, we probably still will want to write out
+a single file per simulation to S3 and store a reference to that record, which can then
+be used in the future in some dataloader-like approach, effectively creating a mini datalake -
+data warehouse? That's exactly what the post-run middleware takes care of.
+
+#### Scatter/gather: divide & conquer
 
 Scythe uses a divide-and-conquer strategy to maximize allocation/collection throughput with
 recursive subdivision. Let's understand why it helps by working through an example.
@@ -693,7 +798,7 @@ as it can greatly reduce the amount of time it takes to collect and combine resu
 it up into parallelized tasks, especially since we can use ThreadPoolExecutors to parallelize the
 network-bound process of pulling the children's thin URI payloads from S3.
 
-### Dealing with thick & thin payloads
+#### Dealing with thick & thin payloads
 
 Hatchet's task payload size is limited to something like 4MB (correct me if I'm wrong @hatchet-dev team!).
 This means that if we are 1e6 simulations, we most likely would not be able to submit the
@@ -746,19 +851,6 @@ scatter/gather tasks, combines them, writes to S3, and returns URIs. The root sc
 task then ultimately does the exact same thing, resulting in a single set of dataframes
 with results from every simulation, e.g. one dataframe for all of the scalars, and one
 dataframe for each of the custom user-defined dataframes in the task output.
-
-If each simulation generates large amounts of data (e.g. high-resolution hourly timeseries
-data or images), then the user can use the utilities inside of the base `ExperimentInputSpec`
-class to write those to an appropriately namespaced/scoped location in the experiment directory
-and return a reference to those files, creating their own datalake that they can later pull from.
-
-_TODO: document writing out user files_
-
-### Artifact Infiltration & Results Exfiltration
-
-_TODO: automatic upload, caching inside of tasks, etc._
-
-### Scalars dataframe construction
 
 ## Cloud Infrastructure
 
