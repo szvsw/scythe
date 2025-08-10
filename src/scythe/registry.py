@@ -3,7 +3,7 @@
 import inspect
 import tempfile
 from pathlib import Path
-from typing import ClassVar, Protocol, TypeVar, cast, get_type_hints
+from typing import ClassVar, Literal, Protocol, TypeVar, cast, get_type_hints
 
 import boto3
 from hatchet_sdk import Context, Worker
@@ -110,6 +110,8 @@ class ExperimentRegistry:
         retries: int = 1,
         overwrite_log_method: bool = True,
         inject_workflow_run_id: bool = True,
+        auto_fetch_files: bool = True,
+        local_file_location: Literal["cache", "copied-to-tempdir"] = "cache",
         **task_config,
     ):
         """Decorator to make a standalone experiment from a function.
@@ -128,6 +130,14 @@ class ExperimentRegistry:
 
             fn_name = fn.__name__
             fn_doc = fn.__doc__
+            fn_accepts_tempdir = _function_accepts_tempdir(fn)
+            if (
+                auto_fetch_files
+                and local_file_location == "copied-to-tempdir"
+                and not fn_accepts_tempdir
+            ):
+                msg = "Function does not accept tempdir, so local_file_location must be 'cache'"
+                raise ValueError(msg)
 
             @cls.Include
             @hatchet.task(
@@ -146,15 +156,31 @@ class ExperimentRegistry:
                     input_.log = lambda msg: context.log(msg)
                 if inject_workflow_run_id:
                     input_.workflow_run_id = context.workflow_run_id
+
+                input_to_call_with = input_
+                if auto_fetch_files:
+                    input_to_call_with = input_._fetch_and_replace_file_references()
+                    input_to_call_with._original_spec = input_
+
                 with tempfile.TemporaryDirectory() as temp_dir:
-                    if _function_accepts_tempdir(fn):
+                    tdir = Path(temp_dir)
+                    if fn_accepts_tempdir:
+                        if (
+                            local_file_location == "copied-to-tempdir"
+                            and auto_fetch_files
+                        ):
+                            input_to_call_with = (
+                                input_to_call_with._copy_local_files_to_and_reference(
+                                    tdir
+                                )
+                            )
                         fn_ = cast(ExperimentFunctionWithTempdir[TInput, TOutput], fn)
-                        output = fn_(input_, tempdir=Path(temp_dir))
+                        output = fn_(input_to_call_with, tempdir=tdir)
                     else:
                         fn_ = cast(
                             ExperimentFunctionWithoutTempdir[TInput, TOutput], fn
                         )
-                        output = fn_(input_)
+                        output = fn_(input_to_call_with)
                     output._add_scalars(input_)
                     output._transfer_files(
                         input_,

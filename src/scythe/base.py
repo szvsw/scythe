@@ -4,8 +4,9 @@ import importlib
 import importlib.resources
 import json
 import logging
+import shutil
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, Self, cast
 
 import pandas as pd
 from pydantic import (
@@ -62,6 +63,15 @@ class FileReferenceMixin(BaseModel):
             for k in self._file_reference_fields()
             if not isinstance(data[k], Path)
         }
+
+    def _copy_local_files_to_and_reference(self, pth: Path) -> Self:
+        """Copy the local files to a given path."""
+        local_paths = self._local_artifact_file_paths
+        new_self = self.model_copy(deep=True)
+        for k, v in local_paths.items():
+            shutil.copy(v, pth / f"{k}{v.suffix}")
+            setattr(new_self, k, pth / f"{k}{v.suffix}")
+        return new_self
 
 
 class BaseSpec(FileReferenceMixin, extra="allow", arbitrary_types_allowed=True):
@@ -121,6 +131,23 @@ class BaseSpec(FileReferenceMixin, extra="allow", arbitrary_types_allowed=True):
         local_path = self.local_path(uri)
         return fetch_uri(uri, local_path, use_cache, self.log)
 
+    def _fetch_remote_files_to_cache(self) -> dict[str, Path]:
+        """Fetch remote files to cache."""
+        remote_artifact_file_paths = self.remote_artifact_file_paths
+        local_paths = {
+            k: self.fetch_uri(v, use_cache=True)
+            for k, v in remote_artifact_file_paths.items()
+        }
+        return local_paths
+
+    def _fetch_and_replace_file_references(self) -> Self:
+        """Fetch remote files to cache and replace file references with local paths."""
+        local_paths = self._fetch_remote_files_to_cache()
+        new_self = self.model_copy(deep=True)
+        for k, v in local_paths.items():
+            setattr(new_self, k, v)
+        return new_self
+
 
 class ExperimentIndexNotSerializableError(Exception):
     """An error for when an experiment index is not serializable."""
@@ -170,6 +197,7 @@ class ExperimentInputSpec(BaseSpec):
     storage_settings: ScytheStorageSettings | None = Field(
         default=None, description="The storage settings to use."
     )
+    _original_spec: Self | None = None
 
     @property
     def prefix(self) -> str:
@@ -181,7 +209,7 @@ class ExperimentInputSpec(BaseSpec):
 
     @property
     def _index_excluded_fields(self) -> set[str]:
-        return {"storage_settings"}
+        return {"storage_settings", "_original_spec"}
 
     def make_multiindex(
         self,
@@ -205,7 +233,10 @@ class ExperimentInputSpec(BaseSpec):
                 n_rows, additional_index_data
             )
 
-        dumped_index = self.model_dump(mode="json", exclude=self._index_excluded_fields)
+        instance_to_dump = self._original_spec or self
+        dumped_index = instance_to_dump.model_dump(
+            mode="json", exclude=instance_to_dump._index_excluded_fields
+        )
         index_data: list[dict[str, Any]] = [dumped_index for _ in range(n_rows)]
 
         if isinstance(additional_index_data, dict):
