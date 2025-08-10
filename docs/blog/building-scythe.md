@@ -1031,6 +1031,19 @@ definition. So if we want 3000 copies of our worker node, we can just specify to
 
 ### Building a mini-cluster with your lab desktops' overnight spare cycles
 
+If you're working in an academic lab with access to multiple desktop computers that sit idle overnight, you can create a surprisingly effective compute cluster using Docker Compose. This approach is admittedly lo-fi and a bit janky - e.g. there's no sophisticated scheduling to automatically pause workers when someone arrives to use their computer in the morning (though it's easy enough to add - also someone can just `pause` their Docker containers...), there's no auto-updating to the latest version of whatever your worker's node container ought to be, etc. But it's also delightfully simple and can provide dramatic speedups for embarrassingly parallel workloads without even worrying about cloud deployments (though these are easy enough and worth getting comfortable with as well). Each machine just needs Docker installed and a simple `docker-compose.yml` file. No complex cluster management or job scheduling software to maintain.
+
+Rather than fighting for allocation time on shared HPC resources or navigating arcane batch schedulers, you can immediately scale up your experiments across available lab resources.
+The basic idea is straightforward: run `docker compose up` on each spare computer in the lab, with each machine configured to run worker containers that connect to your Hatchet instance (either self-hosted or managed). Even with a modest setup of 10-15 lab desktops, each equipped with 10-24 cores, you can achieve something like a 100-200x speedup compared to running experiments on a single machine. Hatchet will automatically handle balancing workloads across the different compute nodes.
+
+Your lab is essentially subsidizing the electricity, cooling, and infrastructure costs. Those machines would be running anyway (or at least powered on), so you're effectively harvesting otherwise wasted compute cycles. Obviously you should be using this for actual research that is covered by whatever budget covers your lab's costs.
+
+In my opinion, this can create a fun, collaborative dynamic where lab members can contribute their idle resources to accelerate everyone's research. It's a nice way to work together and share resources within the research group, at least every once in a while. Also, if you are the person in your lab who normally ends up managing everyone else's distributed compute, it's a good way to give others an idea about what it takes.
+
+Each machine can be configured with an appropriate number of replicas based on its CPU count - maybe 8 workers for a 12-core machine, leaving some headroom for the OS and other processes and with `MAX_RUNS=1` for each worker. The `.env` file contains the Hatchet connection details and any worker configuration.
+
+Workers will continue running until manually stopped, so you'll need to coordinate with lab members about when their machines will be needed. Some labs develop informal protocols around this - maybe workers automatically start at 6 PM and lab members are responsible for stopping them when they arrive in the morning. It's also pretty easy to just manually pause all compute via Hatchet's web dashboard, or do this via cron job of some sort. I'll leave that up to you.
+
 ### Self-hosting Hatchet as an intro to cloud configuration
 
 While I actually think there's a good chance you are likely to be better off using
