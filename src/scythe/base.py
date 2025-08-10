@@ -6,7 +6,12 @@ import json
 import logging
 import shutil
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Self, cast
+from typing import TYPE_CHECKING, Any, cast
+
+try:
+    from typing import Self  # Python 3.11+
+except ImportError:
+    from typing_extensions import Self  # noqa: UP035
 
 import pandas as pd
 from pydantic import (
