@@ -202,7 +202,7 @@ class ExperimentInputSpec(BaseSpec):
     storage_settings: ScytheStorageSettings | None = Field(
         default=None, description="The storage settings to use."
     )
-    _original_spec: Self | None = None
+    _original_spec: "Self | None" = None
 
     @property
     def prefix(self) -> str:
