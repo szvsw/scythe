@@ -1171,6 +1171,25 @@ That would be a great and easy first PR!
 
 #### Deploying the Hatchet service
 
+Now that we know about how the VPC is arranged, we can think about what we need to do to
+deploy Hatchet:
+
+1. We will need to stand up a Postgres instance and a RabbitMQ instance for the Hatchet engine
+   to communicate with. We will do this using Aurora and AmazonMQ respectively and place
+   these services in the private subnet.
+1. We will need to stand up the Hatchet dashboard and Hatchet engine, which we will do using ECS
+   and the images provided by the Hatchet team (though we will actually be pushing out own version of
+   them into ECR). These will be fronted by a load balancer
+   (assuming we want access over the internet), but can be placed into a private or public subnet
+   as desired. If placing in a private subnet, we will need to either add a NAT gateway or
+   AWS PrivateLink VPC Endpoints so that the images can be pulled from ECR.
+
+There are some more subtleties around some of this configuration in terms of how Hatchet
+initializes the database, how to handle connection strings between services (particularly
+if you want the services accessibly simultaneously over the internet AND from inside the VPC
+while bypassing the load balancer), handling healthchecks for gRPC ports etc, but this should be enough to get you up to speed with
+reading the relatively straightforward IaC materials in [szvsw/hatchet-sst](https://github.com/szvsw/hatchet-sst).
+
 ### Worker nodes
 
 #### Deploying a lot of workers at once
