@@ -46,15 +46,21 @@ experiment inputs and outputs. Another option you might check out would be somet
 
 With [uv](https://astral.sh/uv):
 
-`uv add scythe-engine`
+```sh
+uv add scythe-engine
+```
 
 With [poetry](https://python-poetry.org):
 
-`uv add scythe-engine`
+```sh
+poetry add scythe-engine
+```
 
 With pip:
 
-`pip install scythe-engine`
+```sh
+pip install scythe-engine
+```
 
 ## Documentation
 
