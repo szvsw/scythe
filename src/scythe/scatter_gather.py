@@ -247,6 +247,38 @@ class ScatterGatherInput(BaseSpec):
         ) or self.recursion_map.max_depth == 0
         return too_few_specs or past_max_depth
 
+    async def run_or_recurse(
+        self,
+        ctx: Context,
+    ) -> list[GatheredExperimentRuns]:
+        """Run the experiments if not a base case, otherwise recurse."""
+        self.add_root_workflow_run_id(ctx.workflow_run_id)
+
+        if self.is_base_case:
+            experiment_output = await self.run_experiments()
+            experiment_outputs = [experiment_output]
+
+        else:
+            trigs, children_specs = self.create_recursion_payloads(ctx.workflow_run_id)
+            results = await scatter_gather.aio_run_many(trigs, return_exceptions=True)
+            safe_results, _error_df = sift_results(children_specs, results)
+
+            def gather_experiment_outputs(
+                r: ScatterGatherResult,
+            ) -> GatheredExperimentRuns | None:
+                try:
+                    return r.to_gathered_experiment_runs(logger=ctx.log)
+                except Exception as e:
+                    ctx.log(f"Error gathering experiment outputs: {e}")
+                    return None
+
+            with ThreadPoolExecutor(max_workers=8) as executor:
+                experiment_outputs = list(
+                    executor.map(gather_experiment_outputs, safe_results)
+                )
+            experiment_outputs = [r for r in experiment_outputs if r is not None]
+        return experiment_outputs
+
 
 class ScatterGatherResult(BaseModel):
     """The result of the scatter gather workflow."""
@@ -301,33 +333,12 @@ async def scatter_gather(
     ctx: Context,
 ) -> ScatterGatherResult:
     """Run the scatter gather workflow."""
-    payload.add_root_workflow_run_id(ctx.workflow_run_id)
-    if payload.is_base_case:
-        experiment_output = await payload.run_experiments()
-        experiment_outputs = [experiment_output]
-    else:
-        trigs, children_specs = payload.create_recursion_payloads(ctx.workflow_run_id)
-        results = await scatter_gather.aio_run_many(trigs, return_exceptions=True)
-        safe_results, error_df = sift_results(children_specs, results)
-
-        def gather_experiment_outputs(
-            r: ScatterGatherResult,
-        ) -> GatheredExperimentRuns | None:
-            try:
-                return r.to_gathered_experiment_runs(logger=ctx.log)
-            except Exception as e:
-                ctx.log(f"Error gathering experiment outputs: {e}")
-                return None
-
-        with ThreadPoolExecutor(max_workers=8) as executor:
-            experiment_outputs = list(
-                executor.map(gather_experiment_outputs, safe_results)
-            )
-        experiment_outputs = [r for r in experiment_outputs if r is not None]
+    experiment_outputs = await payload.run_or_recurse(ctx)
 
     dfs = [r.success.dataframes for r in experiment_outputs]
     errors = [r.errors for r in experiment_outputs if r.errors is not None]
     transposed_dfs = transpose_dataframe_dict(dfs)
+
     if errors:
         error_dfs = pd.concat(errors, axis=0)
         if "errors" in transposed_dfs:
@@ -336,12 +347,14 @@ async def scatter_gather(
             )
         else:
             transposed_dfs["errors"] = error_dfs
+
     output_key_constructor = partial(
         payload.construct_filekey,
         mode="output",
         workflow_run_id=ctx.workflow_run_id,
         suffix="pq",
     )
+
     uris = save_and_upload_parquets(
         collected_dfs=transposed_dfs,
         s3=s3,
@@ -349,6 +362,7 @@ async def scatter_gather(
         output_key_constructor=output_key_constructor,
         save_errors=payload.save_errors,
     )
+
     if payload.is_root:
         output_key_constructor = partial(
             payload.construct_filekey,
