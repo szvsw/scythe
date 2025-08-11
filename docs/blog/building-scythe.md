@@ -55,7 +55,7 @@ Depending on your interests, you will probably want to skip various sections of 
 
 ### Background
 
-Buildings account for ~40% of global emissions, mostly via space heating snd cooling. My
+Buildings account for ~40% of global emissions, mostly via space heating and cooling. My
 research @ the MIT Sustainable Design Lab (School of Architecture+Planning) is focused on
 decarbonizing the built environment by developing tools which leverage distributed computing
 and machine learning to accelerate large-scale bottom up building energy modeling within retrofit
@@ -408,10 +408,10 @@ default, the experiment name used in S3 will be the name of the simulation task,
 version will be autoresolved based off of previous runs in the bucket via `bumpmajor`,
 `bumpminor`, `bumppatch` or `keep` - regardless of which is selected each run will still
 be scoped by the initiation time, so even when using `keep`, you can have multiple experiment runs
-for the same version. You can also pass in a version manually as a `scythe.allocate.SemVer`.
+for the same version. You can also pass in a version manually as a `scythe.experiments.SemVer`.
 
 ```py title="allocate.py"
-from scythe.allocate import BaseExperiment
+from scythe.experiments import BaseExperiment
 
 from experiments.building_energy import simulate_energy
 from sample import sample

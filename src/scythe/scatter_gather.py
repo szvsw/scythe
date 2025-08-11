@@ -293,7 +293,6 @@ class ScatterGatherResult(BaseModel):
 @hatchet.task(
     name="scythe_scatter_gather",
     input_validator=ScatterGatherInput,
-    # TODO: these should be configurable at the experiment registry level?
     execution_timeout=timeout_settings.SCATTER_GATHER_EXECUTION,
     schedule_timeout=timeout_settings.SCATTER_GATHER_SCHEDULE,
 )

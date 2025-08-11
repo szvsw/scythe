@@ -287,10 +287,10 @@ default, the experiment name used in S3 will be the name of the simulation task,
 version will be autoresolved based off of previous runs in the bucket via `bumpmajor`,
 `bumpminor`, `bumppatch` or `keep` - regardless of which is selected each run will still
 be scoped by the initiation time, so even when using `keep`, you can have multiple experiment runs
-for the same version. You can also pass in a version manually as a `scythe.allocate.SemVer`.
+for the same version. You can also pass in a version manually as a `scythe.experiments.SemVer`.
 
 ```py title="allocate.py"
-from scythe.allocate import BaseExperiment
+from scythe.experiments import BaseExperiment
 
 from experiments.building_energy import simulate_energy
 from sample import sample
@@ -314,7 +314,7 @@ if __name__ == "__main__":
 1. This will auto-resolve the most recent experiment run of the same name in the bucket
    and increment the version, e.g. `v1.2.3` with `bumpminor` will transition to `v.1.3.0`.
 
-The `run` object is a `scythe.allocate.ExperimentRun` while the `ref` is a
+The `run` object is a `scythe.experiments.ExperimentRun` while the `ref` is a
 `hatchet_sdk.runnables.workflow.TaskRunRef`. You can wait for the result to finish with
 either `ref.result()` (blocking) or `await ref.aio_result()` (async). The final task result
 will contain the URIs of any aggregated dataframes written to the buket.
