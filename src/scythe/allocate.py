@@ -7,7 +7,6 @@ from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Generic, Literal
 
-import boto3
 import pandas as pd
 import yaml
 from hatchet_sdk import TaskRunRef, TriggerWorkflowOptions
@@ -22,15 +21,14 @@ from scythe.scatter_gather import (
     scatter_gather,
 )
 from scythe.settings import ScytheStorageSettings
-from scythe.type_helpers import S3Url
+from scythe.utils.filesys import S3Url
 from scythe.utils.results import save_and_upload_parquets
+from scythe.utils.s3 import s3_client as s3
 
 if TYPE_CHECKING:
     from mypy_boto3_s3.client import S3Client
 else:
     S3Client = object
-
-s3 = boto3.client("s3")
 
 
 class ExperimentSpecsMismatchError(Exception):

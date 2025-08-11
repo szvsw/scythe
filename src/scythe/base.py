@@ -4,7 +4,6 @@ import importlib
 import importlib.resources
 import json
 import logging
-import shutil
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
@@ -16,19 +15,11 @@ except ImportError:
     from typing_extensions import Self  # noqa: UP035
 
 import pandas as pd
-from pydantic import (
-    AnyUrl,
-    BaseModel,
-    Field,
-    HttpUrl,
-    field_serializer,
-    field_validator,
-)
+from pydantic import AnyUrl, BaseModel, Field, field_serializer, field_validator
 from pydantic.json_schema import SkipJsonSchema
 
 from scythe.settings import ScytheStorageSettings
-from scythe.type_helpers import FileReference, S3Url
-from scythe.utils.filesys import fetch_uri
+from scythe.utils.filesys import FileReference, FileReferenceMixin, S3Url, fetch_uri
 from scythe.utils.results import serialize_df_dict
 
 if TYPE_CHECKING:
@@ -42,45 +33,6 @@ logger = logging.getLogger(__name__)
 # TODO: should experiment ids be uuid trims?
 # or should they be human readable (creating unicity issues...)?
 # or should they also relate to hatchet auto-generated data?
-class FileReferenceMixin(BaseModel):
-    """A mixin for file reference fields."""
-
-    @classmethod
-    def _file_reference_fields(cls) -> list[str]:
-        """Get the file reference fields."""
-        annotations = cls.model_fields
-        return [k for k, v in annotations.items() if v.annotation is FileReference]
-
-    @property
-    def _local_artifact_file_paths(self) -> dict[str, Path]:
-        """Get the local source file paths."""
-        data = self.model_dump()
-        return {
-            k: data[k]
-            for k in self._file_reference_fields()
-            if isinstance(data[k], Path)
-        }
-
-    @property
-    def remote_artifact_file_paths(self) -> dict[str, HttpUrl | S3Url]:
-        """Get the remote source file paths."""
-        data = self.model_dump()
-        return {
-            k: data[k]
-            for k in self._file_reference_fields()
-            if not isinstance(data[k], Path)
-        }
-
-    def _copy_local_files_to_and_reference(self, pth: Path) -> Self:
-        """Copy the local files to a given path."""
-        local_paths = self._local_artifact_file_paths
-        new_self = self.model_copy(deep=True)
-        for k, v in local_paths.items():
-            shutil.copy(v, pth / f"{k}{v.suffix}")
-            setattr(new_self, k, pth / f"{k}{v.suffix}")
-        return new_self
-
-
 class BaseSpec(FileReferenceMixin, extra="allow", arbitrary_types_allowed=True):
     """A base spec for running a simulation.
 

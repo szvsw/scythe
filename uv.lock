@@ -3065,7 +3065,7 @@ wheels = [
 
 [[package]]
 name = "scythe-engine"
-version = "0.0.35"
+version = "0.0.36"
 source = { editable = "." }
 dependencies = [
     { name = "boto3" },

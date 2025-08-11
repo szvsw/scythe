@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Any
 
 import pandas as pd
 
-from scythe.type_helpers import S3Url
+from scythe.utils.filesys import S3Url
 
 if TYPE_CHECKING:
     from mypy_boto3_s3.client import S3Client

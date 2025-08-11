@@ -7,7 +7,6 @@ from functools import cached_property, partial
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal, TypeVar
 
-import boto3
 import pandas as pd
 from hatchet_sdk import Context, TriggerWorkflowOptions
 from hatchet_sdk.clients.admin import WorkflowRunTriggerConfig
@@ -17,17 +16,14 @@ from scythe.base import BaseSpec, ExperimentInputSpec, ExperimentOutputSpec
 from scythe.hatchet import hatchet
 from scythe.registry import ExperimentRegistry, ExperimentStandaloneType, TOutput
 from scythe.settings import ScytheStorageSettings, timeout_settings
-from scythe.type_helpers import S3Url
-from scythe.utils.filesys import fetch_uri
+from scythe.utils.filesys import S3Url, fetch_uri
 from scythe.utils.results import save_and_upload_parquets, transpose_dataframe_dict
+from scythe.utils.s3 import s3_client as s3
 
 if TYPE_CHECKING:
     from mypy_boto3_s3.client import S3Client
 else:
     S3Client = object
-
-
-s3 = boto3.client("s3")
 
 
 class RecursionSpec(BaseModel):

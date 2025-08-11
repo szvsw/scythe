@@ -6,9 +6,17 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-import boto3
+try:
+    # python 3.11+
+    from typing import Self  # pyright: ignore [reportAttributeAccessIssue]
+except ImportError:
+    # python 3.10
+    from typing_extensions import Self  # noqa: UP035
+
 import requests
-from pydantic import AnyUrl
+from pydantic import AnyUrl, BaseModel, FilePath, HttpUrl, UrlConstraints
+
+from scythe.utils.s3 import s3_client as s3
 
 if TYPE_CHECKING:
     from mypy_boto3_s3.client import S3Client as S3ClientType
@@ -16,7 +24,6 @@ else:
     S3ClientType = object
 
 logger = logging.getLogger(__name__)
-s3: S3ClientType = boto3.client("s3")
 
 
 def fetch_uri(  # noqa: C901
@@ -80,3 +87,51 @@ def fetch_uri(  # noqa: C901
     else:
         raise NotImplementedError(f"URI:SCHEME:{uri.scheme}")
     return local_path
+
+
+class S3Url(AnyUrl):
+    """A URL for an S3 object."""
+
+    _constraints = UrlConstraints(allowed_schemes=["s3"], host_required=True)
+
+
+FileReference = S3Url | HttpUrl | Path | FilePath
+
+
+class FileReferenceMixin(BaseModel):
+    """A mixin for file reference fields."""
+
+    @classmethod
+    def _file_reference_fields(cls) -> list[str]:
+        """Get the file reference fields."""
+        annotations = cls.model_fields
+        return [k for k, v in annotations.items() if v.annotation is FileReference]
+
+    @property
+    def _local_artifact_file_paths(self) -> dict[str, Path]:
+        """Get the local source file paths."""
+        data = self.model_dump()
+        return {
+            k: data[k]
+            for k in self._file_reference_fields()
+            if isinstance(data[k], Path)
+        }
+
+    @property
+    def remote_artifact_file_paths(self) -> dict[str, HttpUrl | S3Url]:
+        """Get the remote source file paths."""
+        data = self.model_dump()
+        return {
+            k: data[k]
+            for k in self._file_reference_fields()
+            if not isinstance(data[k], Path)
+        }
+
+    def _copy_local_files_to_and_reference(self, pth: Path) -> Self:
+        """Copy the local files to a given path."""
+        local_paths = self._local_artifact_file_paths
+        new_self = self.model_copy(deep=True)
+        for k, v in local_paths.items():
+            shutil.copy(v, pth / f"{k}{v.suffix}")
+            setattr(new_self, k, pth / f"{k}{v.suffix}")
+        return new_self

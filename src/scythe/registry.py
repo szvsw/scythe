@@ -5,7 +5,6 @@ import tempfile
 from pathlib import Path
 from typing import ClassVar, Literal, Protocol, TypeVar, cast, get_type_hints
 
-import boto3
 from hatchet_sdk import Context, Worker
 from hatchet_sdk.labels import DesiredWorkerLabel
 from hatchet_sdk.runnables.workflow import Standalone
@@ -14,6 +13,7 @@ from hatchet_sdk.utils.timedelta_to_expression import Duration
 from scythe.base import ExperimentInputSpec, ExperimentOutputSpec
 from scythe.hatchet import hatchet
 from scythe.settings import timeout_settings
+from scythe.utils.s3 import s3_client
 
 ExperimentStandaloneType = Standalone[ExperimentInputSpec, ExperimentOutputSpec]
 
@@ -75,9 +75,6 @@ def _function_accepts_tempdir(fn_: ExperimentFunction) -> bool:
     return ("tempdir" in sig.parameters) and (
         sig.parameters["tempdir"].annotation is Path
     )
-
-
-s3_client = boto3.client("s3")
 
 
 class ExperimentRegistry:

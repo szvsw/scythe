@@ -131,7 +131,7 @@ separate table of file outputs.
 ```py
 from pydantic import Field
 from scythe.base import ExperimentInputSpec, ExperimentOutputSpec
-from scythe.type_helpers import FileReference
+from scythe.utils.filesys import FileReference
 
 class BuildingSimulationInput(ExperimentInputSpec):
     """Simulation inputs for a building energy model."""
