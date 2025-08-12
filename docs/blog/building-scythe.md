@@ -861,10 +861,11 @@ covers some stuff that's pretty boring but it's not something that you will real
 in the normal course of your academic research, and it's ultimately relatively simple to
 at least get to working knowledge with, so I think it's worth covering here.
 
-### Containerization
-
 > (skip to [Deploying Containers](#deploying-containers) if you are familiar with Docker
-> but not ECS, otherwise skip this section entirely and go to [Self-hosting](#self-hosting-hatchet-as-an-intro-to-cloud-configuration))
+> but not ECS, otherwise skip this section entirely and go to [Self-hosting](#self-hosting-hatchet-as-an-intro-to-cloud-configuration)
+> or [Worker nodes](#worker-nodes))
+
+### Containerization
 
 > The Docker documentation is extensive and great, especially the
 > [Getting Started Guide](https://docs.docker.com/get-started/), so I recommend you start
@@ -1188,10 +1189,178 @@ There are some more subtleties around some of this configuration in terms of how
 initializes the database, how to handle connection strings between services (particularly
 if you want the services accessibly simultaneously over the internet AND from inside the VPC
 while bypassing the load balancer), handling healthchecks for gRPC ports etc, but this should be enough to get you up to speed with
-reading the relatively straightforward IaC materials in [szvsw/hatchet-sst](https://github.com/szvsw/hatchet-sst).
+reading the relatively straightforward infrastructure-as-code (IaC) materials in [szvsw/hatchet-sst](https://github.com/szvsw/hatchet-sst).
+
+Take a look at the next section first, as it will give you a quick overview of how all the pieces
+fit together in IaC, though in the (simpler) context of deploying the worker nodes while connecting
+to Hatchet cloud.
 
 ### Worker nodes
 
+We will be using [sst.dev](https://sst.dev) to deploy workers, as we did with self-hosting Hatchet above. There are lots of very detailed instructions and guides on getting started provided directly
+by sst.dev, which I recommend you peruse to get yourself at least mildly familiar with its
+patterns. In short though, it lets you easily specify resources to create in AWS (or other
+providers) in code and then run simple commands to stand-up, tear down, etc.
+
 #### Deploying a lot of workers at once
 
+Typically, I make a directory called `infra` or something similar inside my repo, and then
+run `sst init`.
+
+```sh
+mkdir infra
+cd infra
+sst init
+```
+
+This will create a file called `sst.config.ts` which contains all of the configuration for
+deploying a stack in AWS.
+
+As before, we will need a VPC, an ECS cluster, and an ECS service which runs the worker task. If
+you are self-hosting Hatchet, you probably will want to deploy the workers in the same VPC
+as your Hatchet engine so that you can skip the load balancer in front of the engine and save costs - documentation for that
+coming soon (mostly just requires overriding some vpc settings and some connection string urls
+which normally are encoded in the client token by providing them
+via the worker's env vars). For brevity, I'm just illustrating a typical worker deployment here connecting
+to Hatchet cloud, including getting an existing bucket if indicated and ensuring that
+the worker nodes have access to that bucket (or creating a new one if an existing bucket
+name is not provided).
+
+Probably the main thing to pay attention to is how sst creates a nice clean hierarchy of
+resources: The VPC contains an ECS Cluster, which contains an ECS Service, which contains
+instructions for how it should be built from a Dockerfile and how it should be handled at runtime
+(e.g. how many replica tasks to create, using spot capacity, etc). If we wanted to create
+separate services for our "experiment" worker and our "scatter/gather" worker - which is mostly
+sitting idle but probably needs higher memory - we easily could.
+
+```ts title="sst.config.ts"
+export default $config({
+  app(input) {
+    return {
+      name: "scytheworkers",
+      removal: input?.stage === "production" ? "retain" : "remove",
+      protect: ["production"].includes(input?.stage),
+      home: "aws",
+    };
+  },
+  async run() {
+    // TODO: illustrate referencing existing vpc
+    // similar to buckets below in order to deploy worker in same
+    // vpc as self-hosted Hatchet
+    const vpc = new sst.aws.Vpc("Vpc");
+
+    const cluster = new sst.aws.Cluster("Cluster", {
+      vpc,
+    });
+
+    const hatchetToken = new sst.Secret("HATCHET_CLIENT_TOKEN", "ey");
+
+    const hatchetTokenSecret = new aws.ssm.Parameter(
+      `/${$app.name}/${$app.stage}/HATCHET_CLIENT_TOKEN`,
+      {
+        type: "SecureString",
+        value: hatchetToken.value,
+      },
+    );
+
+    // Optionally use an existing bucket
+    // if `EXISTING_BUCKET` is set
+    const bucket = process.env.EXISTING_BUCKET
+      ? aws.s3.BucketV2.get("Storage", process.env.EXISTING_BUCKET)
+      : new sst.aws.Bucket("Storage");
+
+    const bucketName =
+      bucket instanceof aws.s3.BucketV2 ? bucket.bucket : bucket.name;
+
+    const _service = new sst.aws.Service("Service", {
+      // can be deployed in private subnet if preferred
+      // by replacing cluster or using `transform`
+      cluster,
+      // No ingress needed
+      loadBalancer: undefined,
+
+      // Instance config
+      cpu: "2 vCPU",
+      memory: "8 GB",
+
+      // Scaling/Capacity
+      capacity: "spot",
+      scaling: {
+        min: 4, // (1)!
+        max: 4,
+      },
+
+      // Build
+      image: {
+        // additional config like target, args, etc work
+        context: "..", // relative to working dir
+        dockerfile: "path/to/your/Dockerfile", // relative to context
+      },
+
+      // Runtime
+      environment: {
+        SCYTHE_STORAGE_BUCKET: bucketName,
+        SCYTHE_TIMEOUT_SCATTER_GATHER_SCHEDULE: "100m",
+        SCYTHE_TIMEOUT_SCATTER_GATHER_EXECUTION: "200m",
+        SCYTHE_TIMEOUT_EXPERIMENT_SCHEDULE: "10m",
+        SCYTHE_TIMEOUT_EXPERIMENT_EXECUTION: "2m",
+        SCYTHE_WORKER_HIGH_MEMORY: "false",
+        SCYTHE_WORKER_HIGH_CPU: "false",
+        SCYTHE_WORKER_SLOTS: "1", // Only allow a single task per worker
+      },
+      ssm: {
+        HATCHET_CLIENT_TOKEN: hatchetTokenSecret.arn,
+      },
+
+      link: [bucket],
+    });
+
+    return {
+      bucket: bucketName,
+    };
+  },
+});
+```
+
+1. Set these to super-high numbers to max out your parallelism - and costs!
+
+Now that our config is all set up, we are ready to specify our `HATCHET_CLIENT_TOKEN` (retrieved
+from the Hatchet web dashboard) as an `sst secret` and then deploy our application.
+
+```sh
+sst secret set HATCHET_CLIENT_TOKEN
+sst deploy
+```
+
+In the example above, we are just deploying 4 workers using spot capacity to save costs -
+but we can bump that number up to about 5000 min/max if we want to reach our service quota
+limit for ECS tasks, which is hardlocked at 5k I believe. Note that you probably will need to request a quota bump on ECS Fargate vCPU count - for instance in the example above with 5000 ECS tasks for
+that service, we would need a service quota of 10k simultaneous vCPUs. You would also need
+the appropriate tenant limits on your Hatchet tenant (either in Hatchet cloud or on self-hosted)
+to allow that many simultaneous worker connections, and an appropriately sized/scaled db
+instance and engine instance(s) (which scale horizontally but probably require connection pooling
+past a couple).
+
+We could of course make min != max and use some simple cpu/memory thresholds (configurable inline within
+sst.dev) to handle auto-scaling worker nodes, but for my case I generally prefer to just
+be responsible for manually setting that desired count up to max parallelism and then back
+down to 0 when I am done - or `sst remove`-ing the entire stack - rather than relying on
+autoscaling to safely spin things down. Since I'm only running sims at serious scale
+once or twice a month (or sometimes months plural), it's not a bother at all.
+
 #### Differentiating worker types
+
+```ts
+const environment = {
+  ...,
+  SCYTHE_WORKER_HIGH_MEMORY: "true",
+  SCYTHE_WORKER_HIGH_CPU: "true",
+}
+```
+
+This will automatically add the `HIGH_CPU` and `HIGH_MEMORY` tags to your workers (or you could
+do just one, or neither of course) and then specify on your tasks that they require one or the other (or both!).
+This can be useful to e.g. differentiate your `scatter/gather` workers from your main experiment workers
+without needing to carefully control which tasks the workers register.
+
+_TODO: illustrate indicating that a task requires high memory or cpu_
