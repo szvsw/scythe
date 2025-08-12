@@ -1202,7 +1202,7 @@ by sst.dev, which I recommend you peruse to get yourself at least mildly familia
 patterns. In short though, it lets you easily specify resources to create in AWS (or other
 providers) in code and then run simple commands to stand-up, tear down, etc.
 
-#### Deploying a lot of workers at once
+#### Creating an environment and deploying a handful of workers
 
 Typically, I make a directory called `infra` or something similar inside my repo, and then
 run `sst init`.
@@ -1331,6 +1331,8 @@ from the Hatchet web dashboard) as an `sst secret` and then deploy our applicati
 sst secret set HATCHET_CLIENT_TOKEN
 sst deploy
 ```
+
+#### Deploying a lot of workers at once
 
 In the example above, we are just deploying 4 workers using spot capacity to save costs -
 but we can bump that number up to about 5000 min/max if we want to reach our service quota
