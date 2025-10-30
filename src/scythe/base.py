@@ -4,7 +4,9 @@ import importlib
 import importlib.resources
 import json
 import logging
+import typing
 from pathlib import Path
+from types import UnionType
 from typing import TYPE_CHECKING, Any, cast
 
 try:
@@ -168,7 +170,32 @@ class ExperimentInputSpec(BaseSpec):
 
     @property
     def _index_excluded_fields(self) -> set[str]:
-        return {"storage_settings", "_original_spec"}
+        additional_excludes: set[str] = set()
+
+        def should_exclude_field(annotation: type[Any] | None):
+            if annotation is None:
+                return False
+            if typing.get_origin(annotation) in [list, dict, set, tuple]:
+                return True
+            if issubclass(annotation, BaseModel):
+                return True
+
+        for f, a in self.__pydantic_fields__.items():
+            should_exclude = False
+            if typing.get_origin(a.annotation) is UnionType:
+                should_exclude = any(
+                    should_exclude_field(annotation)
+                    for annotation in typing.get_args(a.annotation)
+                )
+            else:
+                should_exclude = should_exclude_field(a.annotation)
+            if should_exclude:
+                logger.warning(
+                    f"Field {f} is {a.annotation}, which cannot exist in the multi-index of a dataframe, so it is being dropped."
+                )
+                additional_excludes.add(f)
+
+        return additional_excludes.union({"storage_settings", "_original_spec"})
 
     def make_multiindex(
         self,
