@@ -388,12 +388,14 @@ ResultDataContent = TypeVar("ResultDataContent")
 def sift_results(
     spec_data: list[ZipDataContent],
     results: list[ResultDataContent | BaseException],
+    make_error_specs: bool = False,
 ) -> tuple[list[ResultDataContent], pd.DataFrame | None]:
     """Sift results into safe and errored results.
 
     Args:
         spec_data (list[ZipDataContent]): The list of spec data.
         results (list[ResultDataContent | BaseException]): The list of results.
+        make_error_specs (bool): Whether or not create error dataframe.
 
     Returns:
         safe_results (list[ResultDataContent]): The list of safe results.
@@ -404,9 +406,12 @@ def sift_results(
         spec_data[i] for i, r in enumerate(results) if isinstance(r, BaseException)
     ]
 
-    if error_specs:
+    if error_specs and make_error_specs:
         error_msgs = [str(r) for r in results if isinstance(r, BaseException)]
         error_multi_index = pd.MultiIndex.from_frame(
+            # TODO: this will error when the base class has other fields with list/dict etc type
+            # since multi-indices cannot contain non-scalar values.
+            # see base.py `ExperimentInputSpec.make_multiindex` for solution.
             pd.DataFrame([
                 r.model_dump(mode="json", exclude={"storage_settings"})
                 for r in error_specs
