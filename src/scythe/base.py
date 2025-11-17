@@ -319,7 +319,12 @@ class ExperimentOutputSpec(FileReferenceMixin, arbitrary_types_allowed=True):
                     (val, tdir, k) for k, val in v.items() if isinstance(val, str)
                 ]
                 with ThreadPoolExecutor(max_workers=8) as executor:
-                    results = list[pd.DataFrame](executor.map(handle_uri, dl_args))
+                    first_args = [a[0] for a in dl_args]
+                    second_args = [a[1] for a in dl_args]
+                    third_args = [a[2] for a in dl_args]
+                    results = list(
+                        executor.map(handle_uri, first_args, second_args, third_args)
+                    )
                 for (_val, _tdir, k), result in zip(dl_args, results, strict=True):
                     v[k] = result
 
@@ -438,7 +443,9 @@ class ExperimentOutputSpec(FileReferenceMixin, arbitrary_types_allowed=True):
                     )
                     return k, S3Url(uri)
 
-                results = list(executor.map(upload_file, local_paths.items()))
+                first_args = [a[0] for a in local_paths.items()]
+                second_args = [a[1] for a in local_paths.items()]
+                results = list(executor.map(upload_file, first_args, second_args))
 
             # Finally, we need to update the output spec with the new uris
             for k, v in results:
