@@ -22,9 +22,6 @@ jobs:
       - name: Set up the environment
         uses: ./.github/actions/setup-python-env
 
-      # - name: Generate Prisma client
-      #   run: make prisma-generate
-
       - name: Run checks
         run: make check
 
