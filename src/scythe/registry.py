@@ -184,6 +184,11 @@ class ExperimentRegistry:
                         input_.storage_settings,
                         s3_client,
                     )
+                    output._transfer_dataframes(
+                        input_,
+                        input_.storage_settings,
+                        s3_client,
+                    )
                     return output
 
             if worker:

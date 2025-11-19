@@ -4,7 +4,9 @@ import importlib
 import importlib.resources
 import json
 import logging
+import tempfile
 import typing
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from types import UnionType
 from typing import TYPE_CHECKING, Any, cast
@@ -292,21 +294,48 @@ class ExperimentOutputSpec(FileReferenceMixin, arbitrary_types_allowed=True):
     @field_validator("dataframes", mode="before")
     def validate_dataframes(cls, v):
         """Validate the dataframes via deserialization."""
+
+        def handle_dict(v: dict):
+            return pd.DataFrame.from_dict(v, orient="tight")
+
+        def handle_uri(v: str, tdir: Path, key: str) -> pd.DataFrame:
+            lpath = fetch_uri(v, tdir / f"{key}.pq", use_cache=False)
+            return pd.read_parquet(lpath)
+
         if isinstance(v, dict):
-            v = {
-                k: (
-                    v
-                    if isinstance(v, pd.DataFrame)
-                    else pd.DataFrame.from_dict(v, orient="tight")
-                )
-                for k, v in v.items()
-            }
+            with tempfile.TemporaryDirectory() as tmpdir:
+                tdir = Path(tmpdir)
+                v = {
+                    k: (
+                        val
+                        if isinstance(val, pd.DataFrame)
+                        else handle_dict(val)
+                        if isinstance(val, dict)
+                        else val
+                    )
+                    for k, val in v.items()
+                }
+                dl_args: list[tuple[str, Path, str]] = [
+                    (val, tdir, k) for k, val in v.items() if isinstance(val, str)
+                ]
+                with ThreadPoolExecutor(max_workers=8) as executor:
+                    first_args = [a[0] for a in dl_args]
+                    second_args = [a[1] for a in dl_args]
+                    third_args = [a[2] for a in dl_args]
+                    results = list(
+                        executor.map(handle_uri, first_args, second_args, third_args)
+                    )
+                for (_val, _tdir, k), result in zip(dl_args, results, strict=True):
+                    v[k] = result
+
         return v
 
     @field_serializer("dataframes")
     def serialize_dataframes(self, v):
         """Serialize the dataframes via serialization."""
-        return serialize_df_dict(v)
+        v_dfs = {k: v for k, v in v.items() if isinstance(v, pd.DataFrame)}
+        v_uris = {k: v for k, v in v.items() if isinstance(v, str)}
+        return {**serialize_df_dict(v_dfs), **v_uris}
 
     @property
     def _scalar_excluded_fields(self) -> set[str]:
@@ -381,3 +410,43 @@ class ExperimentOutputSpec(FileReferenceMixin, arbitrary_types_allowed=True):
         if "result_file_refs" in self.dataframes:
             raise ResultFileRefsInDataframesError(self.dataframes["result_file_refs"])
         self.dataframes["result_file_refs"] = df
+
+    def _transfer_dataframes(
+        self,
+        input_spec: ExperimentInputSpec,
+        storage_settings: ScytheStorageSettings | None,
+        s3_client: S3Client,
+    ):
+        """Transfer the dataframes to the output spec."""
+        if storage_settings is None:
+            input_spec.log("No storage settings provided, skipping dataframe transfer.")
+            return
+
+        # First, we need to save each of the dataframes to a parquet file
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tdir = Path(tmpdir)
+            local_paths: dict[str, Path] = {}
+            for k, v in self.dataframes.items():
+                lpath = tdir / f"{k}.pq"
+                v.to_parquet(lpath)
+                local_paths[k] = lpath
+            # Next, we need to upload each of the parquet files to s3
+            with ThreadPoolExecutor(max_workers=8) as executor:
+
+                def upload_file(k: str, v: Path) -> tuple[str, S3Url]:
+                    key = f"{storage_settings.BUCKET_PREFIX}/{input_spec.construct_output_key(f'task-dataframes/{k}', v)}"
+                    uri = f"s3://{storage_settings.BUCKET}/{key}"
+                    s3_client.upload_file(
+                        Filename=v.as_posix(),
+                        Bucket=storage_settings.BUCKET,
+                        Key=key,
+                    )
+                    return k, S3Url(uri)
+
+                first_args = [a[0] for a in local_paths.items()]
+                second_args = [a[1] for a in local_paths.items()]
+                results = list(executor.map(upload_file, first_args, second_args))
+
+            # Finally, we need to update the output spec with the new uris
+            for k, v in results:
+                self.dataframes[k] = str(v)  # pyright: ignore [reportArgumentType]
