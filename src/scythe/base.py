@@ -9,7 +9,7 @@ import typing
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from types import UnionType
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, Union, cast
 
 try:
     # python 3.11+
@@ -184,7 +184,10 @@ class ExperimentInputSpec(BaseSpec):
 
         for f, a in self.__pydantic_fields__.items():
             should_exclude = False
-            if typing.get_origin(a.annotation) is UnionType:
+            if (
+                typing.get_origin(a.annotation) is UnionType
+                or typing.get_origin(a.annotation) is Union
+            ):
                 should_exclude = any(
                     should_exclude_field(annotation)
                     for annotation in typing.get_args(a.annotation)
