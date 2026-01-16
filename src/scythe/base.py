@@ -5,10 +5,8 @@ import importlib.resources
 import json
 import logging
 import tempfile
-import typing
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from types import UnionType
 from typing import TYPE_CHECKING, Any, cast
 
 try:
@@ -174,23 +172,14 @@ class ExperimentInputSpec(BaseSpec):
     def _index_excluded_fields(self) -> set[str]:
         additional_excludes: set[str] = set()
 
-        def should_exclude_field(annotation: type[Any] | None):
-            if annotation is None:
-                return False
-            if typing.get_origin(annotation) in [list, dict, set, tuple]:
-                return True
-            if issubclass(annotation, BaseModel):
-                return True
-
         for f, a in self.__pydantic_fields__.items():
-            should_exclude = False
-            if typing.get_origin(a.annotation) is UnionType:
-                should_exclude = any(
-                    should_exclude_field(annotation)
-                    for annotation in typing.get_args(a.annotation)
+            try:
+                pd.MultiIndex.from_tuples(
+                    [("val1", getattr(self, f))], names=["ixcol1", "ixcol2"]
                 )
-            else:
-                should_exclude = should_exclude_field(a.annotation)
+                should_exclude = False
+            except Exception:
+                should_exclude = True
             if should_exclude:
                 logger.warning(
                     f"Field {f} is {a.annotation}, which cannot exist in the multi-index of a dataframe, so it is being dropped."
@@ -204,6 +193,7 @@ class ExperimentInputSpec(BaseSpec):
         additional_index_data: dict[str, Any] | list[dict[str, Any]] | None = None,
         n_rows: int = 1,
         include_sort_subindex: bool = True,
+        additional_excludes: frozenset[str] = frozenset(),
     ) -> pd.MultiIndex:
         """Make a MultiIndex from the Spec, and any other methods which might create index data.
 
@@ -223,7 +213,8 @@ class ExperimentInputSpec(BaseSpec):
 
         instance_to_dump = self._original_spec or self
         dumped_index = instance_to_dump.model_dump(
-            mode="json", exclude=instance_to_dump._index_excluded_fields
+            mode="json",
+            exclude=instance_to_dump._index_excluded_fields.union(additional_excludes),
         )
         index_data: list[dict[str, Any]] = [dumped_index for _ in range(n_rows)]
 
