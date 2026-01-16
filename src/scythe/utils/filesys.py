@@ -96,6 +96,7 @@ class S3Url(AnyUrl):
 
 
 FileReference = S3Url | HttpUrl | Path | FilePath
+OptionalFileReference = FileReference | None
 
 
 class FileReferenceMixin(BaseModel):
@@ -105,12 +106,19 @@ class FileReferenceMixin(BaseModel):
     def _file_reference_fields(cls) -> list[str]:
         """Get the file reference fields."""
         annotations = cls.model_fields
-        return [k for k, v in annotations.items() if v.annotation is FileReference]
+        return [
+            k
+            for k, v in annotations.items()
+            if (
+                (v.annotation is FileReference)
+                or (v.annotation is OptionalFileReference)
+            )
+        ]
 
     @property
     def _local_artifact_file_paths(self) -> dict[str, Path]:
         """Get the local source file paths."""
-        data = self.model_dump()
+        data = self.model_dump(exclude_none=True)
         return {
             k: data[k]
             for k in self._file_reference_fields()
@@ -120,7 +128,7 @@ class FileReferenceMixin(BaseModel):
     @property
     def remote_artifact_file_paths(self) -> dict[str, HttpUrl | S3Url]:
         """Get the remote source file paths."""
-        data = self.model_dump()
+        data = self.model_dump(exclude_none=True)
         return {
             k: data[k]
             for k in self._file_reference_fields()
