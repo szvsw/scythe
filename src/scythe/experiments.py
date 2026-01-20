@@ -197,6 +197,7 @@ class BaseExperiment(BaseModel, Generic[TInput, TOutput], arbitrary_types_allowe
             Prefix=self.prefix,
             Delimiter="/",
         )
+        # TODO: Add pagination.  Required when there are a lot of runs.
         common_prefixes = version_response.get("CommonPrefixes", [])
         prefixes = [d.get("Prefix", None) for d in common_prefixes]
         prefixes = [p.split("/")[-2] for p in prefixes if p is not None]
@@ -444,9 +445,11 @@ class VersionedExperiment(BaseModel, Generic[TInput, TOutput]):
     def list_runs(self, s3_client: S3Client | None = None) -> list["ExperimentRun"]:
         """List all of the runs for the versioned experiment."""
         s3_client = s3_client or s3
+        # TODO: Add pagination.  Required when there are a lot of runs.
         runs = s3_client.list_objects_v2(
             Bucket=self.base_experiment.storage_settings.BUCKET,
             Prefix=self.prefix,
+            Delimiter="/",
         )
         common_prefixes = runs.get("CommonPrefixes", [])
         prefixes = [d.get("Prefix", None) for d in common_prefixes]
