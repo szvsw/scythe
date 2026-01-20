@@ -27,8 +27,10 @@ from scythe.utils.s3 import s3_client as s3
 
 if TYPE_CHECKING:
     from mypy_boto3_s3.client import S3Client
+    from mypy_boto3_s3.type_defs import CommonPrefixTypeDef
 else:
     S3Client = object
+    CommonPrefixTypeDef = object
 
 
 class ExperimentSpecsMismatchError(Exception):
@@ -190,18 +192,22 @@ class BaseExperiment(BaseModel, Generic[TInput, TOutput], arbitrary_types_allowe
     ) -> list["VersionedExperiment[TInput, TOutput]"]:
         """Get all of the versions of the experiment."""
         s3_client = s3_client or s3
-        # check s3 for any existing versions of the experiment by listing everything with
-        # the prefix
-        version_response = s3_client.list_objects_v2(
+
+        paginator = s3_client.get_paginator("list_objects_v2")
+
+        common_prefixes: list[CommonPrefixTypeDef] = []
+        for page in paginator.paginate(
             Bucket=self.storage_settings.BUCKET,
             Prefix=self.prefix,
             Delimiter="/",
-        )
-        # TODO: Add pagination.  Required when there are a lot of runs.
-        common_prefixes = version_response.get("CommonPrefixes", [])
-        prefixes = [d.get("Prefix", None) for d in common_prefixes]
-        prefixes = [p.split("/")[-2] for p in prefixes if p is not None]
-        versions = [SemVer.FromString(p) for p in prefixes]
+            PaginationConfig={"PageSize": 1000},
+        ):
+            common_prefixes.extend(page.get("CommonPrefixes", []))
+
+        prefixes = [d.get("Prefix") for d in common_prefixes]
+        version_strings = [p.split("/")[-2] for p in prefixes if p]
+
+        versions = [SemVer.FromString(vs) for vs in version_strings]
         return [VersionedExperiment(base_experiment=self, version=v) for v in versions]
 
     def latest_version(
@@ -445,14 +451,18 @@ class VersionedExperiment(BaseModel, Generic[TInput, TOutput]):
     def list_runs(self, s3_client: S3Client | None = None) -> list["ExperimentRun"]:
         """List all of the runs for the versioned experiment."""
         s3_client = s3_client or s3
-        # TODO: Add pagination.  Required when there are a lot of runs.
-        runs = s3_client.list_objects_v2(
+        paginator = s3_client.get_paginator("list_objects_v2")
+
+        common_prefixes: list[CommonPrefixTypeDef] = []
+        for page in paginator.paginate(
             Bucket=self.base_experiment.storage_settings.BUCKET,
             Prefix=self.prefix,
             Delimiter="/",
-        )
-        common_prefixes = runs.get("CommonPrefixes", [])
-        prefixes = [d.get("Prefix", None) for d in common_prefixes]
+            PaginationConfig={"PageSize": 1000},
+        ):
+            common_prefixes.extend(page.get("CommonPrefixes", []))
+
+        prefixes = [d.get("Prefix") for d in common_prefixes]
         prefixes = [p.split("/")[-2] for p in prefixes if p is not None]
         timestamps = [datetime.strptime(p, DatetimeFormat) for p in prefixes]
         return [
