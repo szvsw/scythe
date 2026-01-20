@@ -27,10 +27,11 @@ from scythe.utils.s3 import s3_client as s3
 
 if TYPE_CHECKING:
     from mypy_boto3_s3.client import S3Client
-    from mypy_boto3_s3.type_defs import CommonPrefixTypeDef
+    from mypy_boto3_s3.type_defs import CommonPrefixTypeDef, ObjectTypeDef
 else:
     S3Client = object
     CommonPrefixTypeDef = object
+    ObjectTypeDef = object
 
 
 class ExperimentSpecsMismatchError(Exception):
@@ -560,6 +561,36 @@ class ExperimentRun(BaseModel, Generic[TInput, TOutput]):
             if overwrite_sort_index:
                 spec.sort_index = i
         return specs
+
+    @property
+    def final_results_dirkey(self) -> str:
+        """The key for the final results directory."""
+        return f"{self.prefix}final/"
+
+    @property
+    def scalars_filekey(self) -> str:
+        """The key for the scalars file."""
+        return f"{self.final_results_dirkey}scalars.pq"
+
+    def list_results_files(self, s3_client: S3Client | None = None) -> dict[str, str]:
+        """List the results files for the experiment run."""
+        s3_client = s3_client or s3
+        paginator = s3_client.get_paginator("list_objects_v2")
+
+        contents: list[ObjectTypeDef] = []
+        for page in paginator.paginate(
+            Bucket=self.versioned_experiment.base_experiment.storage_settings.BUCKET,
+            Prefix=self.final_results_dirkey,
+            Delimiter="/",
+            PaginationConfig={"PageSize": 1000},
+        ):
+            contents.extend(page.get("Contents", []))
+
+        contents = [c for c in contents if c.get("Key") is not None]
+        keys = [c.get("Key") for c in contents]
+        keys_safe = [k for k in keys if k and not k.endswith("/")]
+        stems = [Path(k).stem for k in keys_safe]
+        return dict(zip(stems, keys_safe, strict=True))
 
 
 def upload_input_artifacts(
