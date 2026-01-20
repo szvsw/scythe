@@ -60,6 +60,42 @@ class DuplicateInputArtifactsError(Exception):
         )
 
 
+class BaseNotFoundError(Exception):
+    """An error raised when a resource is not found."""
+
+
+class ExperimentNotFoundError(BaseNotFoundError):
+    """An error raised when an experiment is not found."""
+
+    def __init__(self, experiment_name: str):
+        """Initialize the error."""
+        self.experiment_name = experiment_name
+        super().__init__(f"Experiment {experiment_name} not found.")
+
+
+class ExperimentVersionNotFoundError(BaseNotFoundError):
+    """An error raised when an experiment version is not found."""
+
+    def __init__(self, experiment_name: str, version: "SemVer"):
+        """Initialize the error."""
+        self.experiment_name = experiment_name
+        self.version = version
+        super().__init__(f"Experiment {experiment_name}/{version} not found.")
+
+
+class ExperimentRunNotFoundError(BaseNotFoundError):
+    """An error raised when an experiment run is not found."""
+
+    def __init__(self, experiment_name: str, version: "SemVer", run_name: str):
+        """Initialize the error."""
+        self.experiment_name = experiment_name
+        self.version = version
+        self.run_name = run_name
+        super().__init__(
+            f"Experiment {experiment_name}/{version}/{run_name} not found."
+        )
+
+
 class InputArtifactLocations(BaseModel):
     """The locations of the input artifacts for an experiment."""
 
@@ -220,6 +256,29 @@ class BaseExperiment(BaseModel, Generic[TInput, TOutput], arbitrary_types_allowe
             latest = max(versions, key=lambda v: v.version) if versions else None
             self._latest_version_cache = latest
         return self._latest_version_cache
+
+    @property
+    def latest_run(self) -> "ExperimentRun":
+        """The latest run for the experiment."""
+        latest_version = self.latest_version()
+        if latest_version is None:
+            raise ExperimentNotFoundError(self.experiment.name)
+        return latest_version.latest_run
+
+    def latest_results_for_version(self, version: SemVer) -> dict[str, str]:
+        """The latest results for a given version."""
+        versioned_experiment = VersionedExperiment(
+            base_experiment=self, version=version
+        )
+        return versioned_experiment.latest_run_results
+
+    @property
+    def latest_results(self) -> dict[str, str]:
+        """The latest results for the experiment."""
+        latest_version = self.latest_version()
+        if latest_version is None:
+            raise ExperimentNotFoundError(self.experiment.name)
+        return latest_version.latest_run_results
 
     def resolve_next_version(
         self, version: SemVer | VersioningStrategy, s3_client: S3Client | None = None
@@ -469,6 +528,20 @@ class VersionedExperiment(BaseModel, Generic[TInput, TOutput]):
         return [
             ExperimentRun(versioned_experiment=self, timestamp=t) for t in timestamps
         ]
+
+    @property
+    def latest_run(self) -> "ExperimentRun":
+        """The latest run for the versioned experiment."""
+        runs = self.list_runs()
+        if not runs:
+            raise ExperimentNotFoundError(self.base_experiment.experiment.name)
+        return max(runs, key=lambda r: r.timestamp)
+
+    @property
+    def latest_run_results(self) -> dict[str, str]:
+        """The latest run results for the versioned experiment."""
+        latest_run = self.latest_run
+        return latest_run.list_results_files()
 
 
 class ExperimentRun(BaseModel, Generic[TInput, TOutput]):
