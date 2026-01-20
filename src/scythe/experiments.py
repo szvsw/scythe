@@ -27,8 +27,11 @@ from scythe.utils.s3 import s3_client as s3
 
 if TYPE_CHECKING:
     from mypy_boto3_s3.client import S3Client
+    from mypy_boto3_s3.type_defs import CommonPrefixTypeDef, ObjectTypeDef
 else:
     S3Client = object
+    CommonPrefixTypeDef = object
+    ObjectTypeDef = object
 
 
 class ExperimentSpecsMismatchError(Exception):
@@ -190,17 +193,22 @@ class BaseExperiment(BaseModel, Generic[TInput, TOutput], arbitrary_types_allowe
     ) -> list["VersionedExperiment[TInput, TOutput]"]:
         """Get all of the versions of the experiment."""
         s3_client = s3_client or s3
-        # check s3 for any existing versions of the experiment by listing everything with
-        # the prefix
-        version_response = s3_client.list_objects_v2(
+
+        paginator = s3_client.get_paginator("list_objects_v2")
+
+        common_prefixes: list[CommonPrefixTypeDef] = []
+        for page in paginator.paginate(
             Bucket=self.storage_settings.BUCKET,
             Prefix=self.prefix,
             Delimiter="/",
-        )
-        common_prefixes = version_response.get("CommonPrefixes", [])
-        prefixes = [d.get("Prefix", None) for d in common_prefixes]
-        prefixes = [p.split("/")[-2] for p in prefixes if p is not None]
-        versions = [SemVer.FromString(p) for p in prefixes]
+            PaginationConfig={"PageSize": 1000},
+        ):
+            common_prefixes.extend(page.get("CommonPrefixes", []))
+
+        prefixes = [d.get("Prefix") for d in common_prefixes]
+        version_strings = [p.split("/")[-2] for p in prefixes if p]
+
+        versions = [SemVer.FromString(vs) for vs in version_strings]
         return [VersionedExperiment(base_experiment=self, version=v) for v in versions]
 
     def latest_version(
@@ -444,12 +452,18 @@ class VersionedExperiment(BaseModel, Generic[TInput, TOutput]):
     def list_runs(self, s3_client: S3Client | None = None) -> list["ExperimentRun"]:
         """List all of the runs for the versioned experiment."""
         s3_client = s3_client or s3
-        runs = s3_client.list_objects_v2(
+        paginator = s3_client.get_paginator("list_objects_v2")
+
+        common_prefixes: list[CommonPrefixTypeDef] = []
+        for page in paginator.paginate(
             Bucket=self.base_experiment.storage_settings.BUCKET,
             Prefix=self.prefix,
-        )
-        common_prefixes = runs.get("CommonPrefixes", [])
-        prefixes = [d.get("Prefix", None) for d in common_prefixes]
+            Delimiter="/",
+            PaginationConfig={"PageSize": 1000},
+        ):
+            common_prefixes.extend(page.get("CommonPrefixes", []))
+
+        prefixes = [d.get("Prefix") for d in common_prefixes]
         prefixes = [p.split("/")[-2] for p in prefixes if p is not None]
         timestamps = [datetime.strptime(p, DatetimeFormat) for p in prefixes]
         return [
@@ -547,6 +561,36 @@ class ExperimentRun(BaseModel, Generic[TInput, TOutput]):
             if overwrite_sort_index:
                 spec.sort_index = i
         return specs
+
+    @property
+    def final_results_dirkey(self) -> str:
+        """The key for the final results directory."""
+        return f"{self.prefix}final/"
+
+    @property
+    def scalars_filekey(self) -> str:
+        """The key for the scalars file."""
+        return f"{self.final_results_dirkey}scalars.pq"
+
+    def list_results_files(self, s3_client: S3Client | None = None) -> dict[str, str]:
+        """List the results files for the experiment run."""
+        s3_client = s3_client or s3
+        paginator = s3_client.get_paginator("list_objects_v2")
+
+        contents: list[ObjectTypeDef] = []
+        for page in paginator.paginate(
+            Bucket=self.versioned_experiment.base_experiment.storage_settings.BUCKET,
+            Prefix=self.final_results_dirkey,
+            Delimiter="/",
+            PaginationConfig={"PageSize": 1000},
+        ):
+            contents.extend(page.get("Contents", []))
+
+        contents = [c for c in contents if c.get("Key") is not None]
+        keys = [c.get("Key") for c in contents]
+        keys_safe = [k for k in keys if k and not k.endswith("/")]
+        stems = [Path(k).stem for k in keys_safe]
+        return dict(zip(stems, keys_safe, strict=True))
 
 
 def upload_input_artifacts(
