@@ -147,6 +147,7 @@ class ScatterGatherInput(BaseSpec):
 
     async def run_experiments(
         self,
+        ctx: Context,
     ) -> GatheredExperimentRuns:
         """Run the actual experiments and collect results."""
         specs = self.specs
@@ -161,6 +162,9 @@ class ScatterGatherInput(BaseSpec):
             )
             for i, spec in enumerate(specs)
         ]
+        ctx.log(
+            f"Created {len(inputs)} leaf bulk run items runs for the scatter gather payload."
+        )
         # since we don't have a way to get the individual workflow run ids,
         # we can't associate specific results (or errors) with specific results
         results = await self.standalone.aio_run_many(inputs, return_exceptions=True)
@@ -255,7 +259,10 @@ class ScatterGatherInput(BaseSpec):
         self.add_root_workflow_run_id(ctx.workflow_run_id)
 
         if self.is_base_case:
-            experiment_output = await self.run_experiments()
+            ctx.log(
+                "This scatter gather payload is a base case, so we will run the experiments."
+            )
+            experiment_output = await self.run_experiments(ctx)
             experiment_outputs = [experiment_output]
 
         else:
