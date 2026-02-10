@@ -1,5 +1,5 @@
 version = 1
-revision = 2
+revision = 3
 requires-python = ">=3.10, <3.13"
 resolution-markers = [
     "python_full_version >= '3.12'",
@@ -3065,7 +3065,7 @@ wheels = [
 
 [[package]]
 name = "scythe-engine"
-version = "0.0.41"
+version = "0.0.42"
 source = { editable = "." }
 dependencies = [
     { name = "boto3" },
@@ -3108,7 +3108,7 @@ docs = [
 requires-dist = [
     { name = "boto3", specifier = ">=1.35,<2.0" },
     { name = "fastparquet", specifier = "~=2024.11.0" },
-    { name = "hatchet-sdk", specifier = ">=1.16.2,<2" },
+    { name = "hatchet-sdk", specifier = ">=1.16.2,<1.21" },
     { name = "numpy", specifier = ">=2.2,<2.3" },
     { name = "pandas", specifier = ">=2.2.2,<2.3" },
     { name = "pyarrow", specifier = "~=19.0.1" },
