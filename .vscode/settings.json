@@ -15,5 +15,7 @@
   },
   "ruff.lineLength": 88,
   "python.analysis.autoImportCompletions": true,
-  "editor.rulers": [88]
+  "editor.rulers": [88, 120],
+  "cursorpyright.analysis.autoImportCompletions": true,
+  "cursorpyright.analysis.typeCheckingMode": "standard"
 }
