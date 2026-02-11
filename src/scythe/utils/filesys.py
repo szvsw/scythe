@@ -4,7 +4,7 @@ import logging
 import shutil
 from collections.abc import Callable
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 try:
     # python 3.11+
@@ -110,11 +110,26 @@ class FileReferenceMixin(BaseModel):
         print(annotations)
         print("Annotations are FileReference:")
         for k, v in annotations.items():
-            print(f"{k}: {v.annotation is FileReference}")
+            print(
+                f"{k}:{v.annotation} is {FileReference}? {v.annotation is FileReference}"
+            )
+
         print("\n")
         print("ANNOTATIONS are OptionalFileReference:")
         for k, v in annotations.items():
-            print(f"{k}: {v.annotation is OptionalFileReference}")
+            print(
+                f"{k}:{v.annotation} is {OptionalFileReference}? {v.annotation is OptionalFileReference}"
+            )
+        print("Annotations are FileReference | None:")
+        for k, v in annotations.items():
+            print(
+                f"{k}:{v.annotation} is {FileReference | None}? {v.annotation is FileReference | None}"
+            )
+        print("Annotations are Optional[FileReference]:")
+        for k, v in annotations.items():
+            print(
+                f"{k}:{v.annotation} is {Optional[FileReference]}? {v.annotation is Optional[FileReference]}"
+            )
         print("\n")
         return [
             k
@@ -122,6 +137,8 @@ class FileReferenceMixin(BaseModel):
             if (
                 (v.annotation is FileReference)
                 or (v.annotation is OptionalFileReference)
+                or (v.annotation is FileReference | None)
+                or (v.annotation is Optional[FileReference])
             )
         ]
 
