@@ -1,6 +1,6 @@
 [project]
 name = "scythe-engine"
-version = "0.1.0"
+version = "0.1.1"
 description = "This is a repository for managing embarassingly parallel experiments with Hatchet."
 authors = [
     { name = "Sam Wolk", email = "mail@samwolk.info" }
@@ -17,6 +17,7 @@ dependencies = [
     "tables>=3.9,<4.0",
     "fastparquet~=2024.11.0",
     "pyarrow~=19.0.1",
+    "pyyaml>=6.0.2",
 ]
 
 [dependency-groups]

@@ -3016,7 +3016,7 @@ wheels = [
 
 [[package]]
 name = "scythe-engine"
-version = "0.1.0"
+version = "0.1.1"
 source = { editable = "." }
 dependencies = [
     { name = "boto3" },
@@ -3026,6 +3026,7 @@ dependencies = [
     { name = "pandas" },
     { name = "pyarrow" },
     { name = "pydantic" },
+    { name = "pyyaml" },
     { name = "tables", version = "3.10.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "tables", version = "3.10.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
     { name = "tqdm" },
@@ -3064,6 +3065,7 @@ requires-dist = [
     { name = "pandas", specifier = ">=2.2.2,<2.3" },
     { name = "pyarrow", specifier = "~=19.0.1" },
     { name = "pydantic", specifier = ">=2.9.2,<3.0" },
+    { name = "pyyaml", specifier = ">=6.0.2" },
     { name = "tables", specifier = ">=3.9,<4.0" },
     { name = "tqdm", specifier = ">=4.66,<5.0" },
 ]
