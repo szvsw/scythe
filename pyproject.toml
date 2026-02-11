@@ -1,6 +1,6 @@
 [project]
 name = "scythe-engine"
-version = "0.0.42"
+version = "0.0.43"
 description = "This is a repository for managing embarassingly parallel experiments with Hatchet."
 authors = [
     { name = "Sam Wolk", email = "mail@samwolk.info" }
@@ -110,6 +110,7 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["S101"]
+"src/scythe/utils/filesys.py" = ["UP045", "UP007", "RUF100"] # we need the `Optional` type for some specific reasons with `is` checks.
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"
