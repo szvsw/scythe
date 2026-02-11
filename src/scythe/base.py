@@ -181,7 +181,7 @@ class ExperimentInputSpec(BaseSpec):
             except Exception:
                 should_exclude = True
             if should_exclude:
-                logger.warning(
+                logger.debug(
                     f"Field {f} is {a.annotation}, which cannot exist in the multi-index of a dataframe, so it is being dropped."
                 )
                 additional_excludes.add(f)
