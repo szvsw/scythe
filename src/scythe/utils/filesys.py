@@ -149,7 +149,7 @@ class FileReferenceMixin(BaseModel):
         return {
             k: data[k]
             for k in self._file_reference_fields()
-            if isinstance(data[k], Path)
+            if k in data and isinstance(data[k], Path)
         }
 
     @property
@@ -159,7 +159,7 @@ class FileReferenceMixin(BaseModel):
         return {
             k: data[k]
             for k in self._file_reference_fields()
-            if not isinstance(data[k], Path)
+            if k in data and not isinstance(data[k], Path)
         }
 
     def _copy_local_files_to_and_reference(self, pth: Path) -> Self:
