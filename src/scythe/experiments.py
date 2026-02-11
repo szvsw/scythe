@@ -5,7 +5,7 @@ from collections.abc import Callable, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Generic, Literal
+from typing import TYPE_CHECKING, Any, Generic, Literal, cast
 
 import pandas as pd
 import yaml
@@ -299,16 +299,16 @@ class BaseExperiment(BaseModel, Generic[TInput, TOutput], arbitrary_types_allowe
                 version = latest_version.version
         return version
 
-    def check_spec_types(self, specs: Sequence[TInput]) -> None:
+    def check_spec_types(self, specs: Sequence[Any]) -> None:
         """Check that the types of the specs match the expected type."""
         mismatching_types = [
             type(spec)
             for spec in specs
-            if not isinstance(spec, self.experiment.config.input_validator)
+            if not isinstance(spec, self.experiment.input_validator_type)
         ]
         if mismatching_types:
             raise ExperimentSpecsMismatchError(
-                expected_type=self.experiment.config.input_validator,
+                expected_type=self.experiment.input_validator_type,
                 actual_type=mismatching_types[0],
             )
 
@@ -429,8 +429,8 @@ class BaseExperiment(BaseModel, Generic[TInput, TOutput], arbitrary_types_allowe
 
         # Now, we can upload some various metadata
         # files to the run dir
-        input_validator = self.experiment.input_validator
-        output_validator = self.experiment._output_validator
+        input_validator = self.experiment.input_validator_type
+        output_validator = cast(type[TOutput], self.experiment._output_validator._type)
 
         # if output_validator is None:
         #     msg = "Output validator is not set for experiment"

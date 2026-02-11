@@ -1,6 +1,6 @@
 [project]
 name = "scythe-engine"
-version = "0.0.43"
+version = "0.1.0"
 description = "This is a repository for managing embarassingly parallel experiments with Hatchet."
 authors = [
     { name = "Sam Wolk", email = "mail@samwolk.info" }
@@ -8,7 +8,7 @@ authors = [
 requires-python =">=3.10,<3.13"
 readme = "README.md"
 dependencies = [
-    "hatchet-sdk>=1.16.2,<1.21",
+    "hatchet-sdk>=1.23.1,<2",
     "pydantic>=2.9.2,<3.0",
     "boto3>=1.35,<2.0",
     "pandas>=2.2.2,<2.3",

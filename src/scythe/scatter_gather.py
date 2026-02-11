@@ -136,7 +136,7 @@ class ScatterGatherInput(BaseSpec):
         local_path = self.fetch_uri(self.specs_uri, use_cache=True)
         df = pd.read_parquet(local_path)
         specs_dicts = df.to_dict(orient="records")
-        validator = self.standalone.input_validator
+        validator = self.standalone.input_validator_type
         return [validator.model_validate(spec) for spec in specs_dicts]
 
     def add_root_workflow_run_id(self, root_workflow_run_id: str) -> None:
