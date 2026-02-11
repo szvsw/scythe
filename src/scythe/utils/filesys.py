@@ -96,7 +96,7 @@ class S3Url(AnyUrl):
 
 
 FileReference = S3Url | HttpUrl | Path | FilePath
-OptionalFileReference = FileReference | None
+OptionalFileReference = S3Url | HttpUrl | Path | FilePath | None
 
 
 class FileReferenceMixin(BaseModel):
