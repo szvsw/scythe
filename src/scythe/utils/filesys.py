@@ -106,6 +106,16 @@ class FileReferenceMixin(BaseModel):
     def _file_reference_fields(cls) -> list[str]:
         """Get the file reference fields."""
         annotations = cls.model_fields
+        print("ANNOTATIONS:")
+        print(annotations)
+        print("Annotations are FileReference:")
+        for k, v in annotations.items():
+            print(f"{k}: {v.annotation is FileReference}")
+        print("\n")
+        print("ANNOTATIONS are OptionalFileReference:")
+        for k, v in annotations.items():
+            print(f"{k}: {v.annotation is OptionalFileReference}")
+        print("\n")
         return [
             k
             for k, v in annotations.items()
