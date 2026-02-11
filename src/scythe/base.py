@@ -336,7 +336,14 @@ class ExperimentOutputSpec(FileReferenceMixin, arbitrary_types_allowed=True):
 
     def _add_scalars(self, input_spec: ExperimentInputSpec):
         """Update the dataframes with the input spec."""
+        print("\n------ ADDING SCALARS ------")
+        print("SHOULD BE EXCLUdING FROM SCALARS:")
+        print(self._scalar_excluded_fields)
         scalar_data = self.model_dump(mode="json", exclude=self._scalar_excluded_fields)
+        print("SCALAR DATA AT TIME OF ADDING SCALARS:")
+        print(scalar_data)
+        print(f"length of scalar data: {len(scalar_data)}")
+        print("\n")
         if len(scalar_data) == 0:
             return
         results = [scalar_data]
