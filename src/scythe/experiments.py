@@ -5,7 +5,7 @@ from collections.abc import Callable, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Generic, Literal, cast
+from typing import TYPE_CHECKING, Any, Generic, Literal
 
 import pandas as pd
 import yaml
@@ -430,7 +430,7 @@ class BaseExperiment(BaseModel, Generic[TInput, TOutput], arbitrary_types_allowe
         # Now, we can upload some various metadata
         # files to the run dir
         input_validator = self.experiment.input_validator_type
-        output_validator = cast(type[TOutput], self.experiment._output_validator._type)
+        output_validator = self.experiment.output_validator_type
 
         # if output_validator is None:
         #     msg = "Output validator is not set for experiment"

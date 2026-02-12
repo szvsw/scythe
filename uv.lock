@@ -1015,7 +1015,7 @@ wheels = [
 
 [[package]]
 name = "hatchet-sdk"
-version = "1.23.1"
+version = "1.23.3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohttp" },
@@ -1029,9 +1029,9 @@ dependencies = [
     { name = "tenacity" },
     { name = "urllib3" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/59/a7/ccf5cd0000cccab8001c420c0b44d85b76b842cf08c9ad42ba89be20ebf8/hatchet_sdk-1.23.1.tar.gz", hash = "sha256:9622b5eb2126abdccfb9d24585a64c5bf412d50a18cee1454a282797d8c1e7b0", size = 233136, upload-time = "2026-02-11T01:27:03.774Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/ac/24/0f342cec439cbd8bbdc07ada91f5df6628b2a7b5ffd64402bd311b13d276/hatchet_sdk-1.23.3.tar.gz", hash = "sha256:e43cb39ab6c6cd8a7b8ca3f019e1866ab059f2926a56a35472ee3d5203415756", size = 233434, upload-time = "2026-02-12T14:35:33.703Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/88/48/dd00b5dfd60b39e03e69d6119f3291948325a2e93e6dce09efa2d39ffb1e/hatchet_sdk-1.23.1-py3-none-any.whl", hash = "sha256:cb9ac1a7d30f761cbf2f1185123452e71064f2a05e9156d62c0094dd95d2cbbc", size = 555421, upload-time = "2026-02-11T01:27:02.185Z" },
+    { url = "https://files.pythonhosted.org/packages/db/5d/42e17dca09a7c4d5c48da942e9e6e9bc11c02ae85f02064a7e69669fca9c/hatchet_sdk-1.23.3-py3-none-any.whl", hash = "sha256:b37f55f5cb334e89196beff0f37f8edfdbf5058d78fb404be9e1c1e77bab653c", size = 555794, upload-time = "2026-02-12T14:35:32.219Z" },
 ]
 
 [[package]]
@@ -3016,7 +3016,7 @@ wheels = [
 
 [[package]]
 name = "scythe-engine"
-version = "0.1.1"
+version = "0.1.2"
 source = { editable = "." }
 dependencies = [
     { name = "boto3" },
@@ -3060,7 +3060,7 @@ docs = [
 requires-dist = [
     { name = "boto3", specifier = ">=1.35,<2.0" },
     { name = "fastparquet", specifier = "~=2024.11.0" },
-    { name = "hatchet-sdk", specifier = ">=1.23.1,<2" },
+    { name = "hatchet-sdk", specifier = ">=1.23.3,<2" },
     { name = "numpy", specifier = ">=2.2,<2.3" },
     { name = "pandas", specifier = ">=2.2.2,<2.3" },
     { name = "pyarrow", specifier = "~=19.0.1" },
