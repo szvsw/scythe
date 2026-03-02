@@ -1151,22 +1151,21 @@
 <h1 id="architecture">Architecture<a class="headerlink" href="#architecture" title="Permanent link">#</a></h1>
 <p>Scythe is organized into three layers: a <strong>User Layer</strong> that researchers interact with directly, a <strong>Core Layer</strong> that implements the experiment orchestration logic, and an <strong>Infrastructure Layer</strong> that provides the execution and storage backends.</p>
 <h2 id="three-layer-overview">Three-Layer Overview<a class="headerlink" href="#three-layer-overview" title="Permanent link">#</a></h2>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>block-beta
-</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    columns 1
-</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>    block:user[&quot;User Layer&quot;]
-</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>        A[&quot;ExperimentInputSpec / ExperimentOutputSpec&quot;]
-</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>        B[&quot;@ExperimentRegistry.Register()&quot;]
-</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>        C[&quot;BaseExperiment.allocate()&quot;]
-</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>    end
-</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>    block:core[&quot;Scythe Core&quot;]
-</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>        D[&quot;registry&quot;] E[&quot;experiments&quot;] F[&quot;scatter_gather&quot;] G[&quot;base&quot;] H[&quot;worker&quot;]
-</span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>    end
-</span><span id="__span-0-11"><a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>    block:infra[&quot;Infrastructure Layer&quot;]
-</span><span id="__span-0-12"><a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>        I[&quot;Hatchet SDK&quot;] J[&quot;S3 / boto3&quot;] K[&quot;Docker / ECS&quot;] L[&quot;SST / Pulumi&quot;]
-</span><span id="__span-0-13"><a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>    end
-</span><span id="__span-0-14"><a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>    user --&gt; core
-</span><span id="__span-0-15"><a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a>    core --&gt; infra
-</span></code></pre></div>
+<pre class="mermaid"><code>block-beta
+    columns 1
+    block:user["User Layer"]
+        A["ExperimentInputSpec / ExperimentOutputSpec"]
+        B["@ExperimentRegistry.Register()"]
+        C["BaseExperiment.allocate()"]
+    end
+    block:core["Scythe Core"]
+        D["registry"] E["experiments"] F["scatter_gather"] G["base"] H["worker"]
+    end
+    block:infra["Infrastructure Layer"]
+        I["Hatchet SDK"] J["S3 / boto3"] K["Docker / ECS"] L["SST / Pulumi"]
+    end
+    user --&gt; core
+    core --&gt; infra</code></pre>
 <h3 id="user-layer">User Layer<a class="headerlink" href="#user-layer" title="Permanent link">#</a></h3>
 <p>The user layer is what researchers and engineers interact with. It consists of three steps:</p>
 <ol>
@@ -1217,54 +1216,52 @@
 </ul>
 <h2 id="data-flow">Data Flow<a class="headerlink" href="#data-flow" title="Permanent link">#</a></h2>
 <p>The following diagram shows how data moves through the system during an experiment:</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>sequenceDiagram
-</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>    participant User
-</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>    participant Scythe as Scythe Core
-</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>    participant Hatchet
-</span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>    participant S3
-</span><span id="__span-1-6"><a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>    participant Workers
-</span><span id="__span-1-7"><a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>
-</span><span id="__span-1-8"><a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a>    User-&gt;&gt;Scythe: allocate(specs, version)
-</span><span id="__span-1-9"><a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a>    Scythe-&gt;&gt;S3: Upload specs.pq, artifacts, manifest
-</span><span id="__span-1-10"><a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a>    Scythe-&gt;&gt;Hatchet: Trigger scatter/gather workflow
-</span><span id="__span-1-11"><a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a>    Hatchet-&gt;&gt;Workers: Dispatch scatter/gather task
-</span><span id="__span-1-12"><a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a>    Workers-&gt;&gt;S3: Fetch specs, split into sub-batches
-</span><span id="__span-1-13"><a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a>    Workers-&gt;&gt;Hatchet: Spawn child tasks (recurse or leaf)
-</span><span id="__span-1-14"><a id="__codelineno-1-14" name="__codelineno-1-14" href="#__codelineno-1-14"></a>    Hatchet-&gt;&gt;Workers: Dispatch leaf experiment tasks
-</span><span id="__span-1-15"><a id="__codelineno-1-15" name="__codelineno-1-15" href="#__codelineno-1-15"></a>    Workers-&gt;&gt;S3: Fetch input artifacts
-</span><span id="__span-1-16"><a id="__codelineno-1-16" name="__codelineno-1-16" href="#__codelineno-1-16"></a>    Workers-&gt;&gt;Workers: Run simulation function
-</span><span id="__span-1-17"><a id="__codelineno-1-17" name="__codelineno-1-17" href="#__codelineno-1-17"></a>    Workers-&gt;&gt;S3: Upload output files, DataFrames
-</span><span id="__span-1-18"><a id="__codelineno-1-18" name="__codelineno-1-18" href="#__codelineno-1-18"></a>    Workers-&gt;&gt;Hatchet: Return result
-</span><span id="__span-1-19"><a id="__codelineno-1-19" name="__codelineno-1-19" href="#__codelineno-1-19"></a>    Hatchet-&gt;&gt;Workers: Gather results at scatter/gather nodes
-</span><span id="__span-1-20"><a id="__codelineno-1-20" name="__codelineno-1-20" href="#__codelineno-1-20"></a>    Workers-&gt;&gt;S3: Write final/ scalars.pq, result_file_refs.pq
-</span><span id="__span-1-21"><a id="__codelineno-1-21" name="__codelineno-1-21" href="#__codelineno-1-21"></a>    User-&gt;&gt;S3: Download results
-</span></code></pre></div>
+<pre class="mermaid"><code>sequenceDiagram
+    participant User
+    participant Scythe as Scythe Core
+    participant Hatchet
+    participant S3
+    participant Workers
+
+    User-&gt;&gt;Scythe: allocate(specs, version)
+    Scythe-&gt;&gt;S3: Upload specs.pq, artifacts, manifest
+    Scythe-&gt;&gt;Hatchet: Trigger scatter/gather workflow
+    Hatchet-&gt;&gt;Workers: Dispatch scatter/gather task
+    Workers-&gt;&gt;S3: Fetch specs, split into sub-batches
+    Workers-&gt;&gt;Hatchet: Spawn child tasks (recurse or leaf)
+    Hatchet-&gt;&gt;Workers: Dispatch leaf experiment tasks
+    Workers-&gt;&gt;S3: Fetch input artifacts
+    Workers-&gt;&gt;Workers: Run simulation function
+    Workers-&gt;&gt;S3: Upload output files, DataFrames
+    Workers-&gt;&gt;Hatchet: Return result
+    Hatchet-&gt;&gt;Workers: Gather results at scatter/gather nodes
+    Workers-&gt;&gt;S3: Write final/ scalars.pq, result_file_refs.pq
+    User-&gt;&gt;S3: Download results</code></pre>
 <h2 id="module-dependency-graph">Module Dependency Graph<a class="headerlink" href="#module-dependency-graph" title="Permanent link">#</a></h2>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>flowchart TD
-</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>    base --&gt; settings
-</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>    base --&gt; utils_filesys[&quot;utils.filesys&quot;]
-</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>    base --&gt; utils_results[&quot;utils.results&quot;]
-</span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>    registry --&gt; base
-</span><span id="__span-2-6"><a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>    registry --&gt; hatchet_mod[&quot;hatchet&quot;]
-</span><span id="__span-2-7"><a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a>    registry --&gt; settings
-</span><span id="__span-2-8"><a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a>    registry --&gt; utils_s3[&quot;utils.s3&quot;]
-</span><span id="__span-2-9"><a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a>    scatter_gather --&gt; base
-</span><span id="__span-2-10"><a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a>    scatter_gather --&gt; registry
-</span><span id="__span-2-11"><a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a>    scatter_gather --&gt; hatchet_mod
-</span><span id="__span-2-12"><a id="__codelineno-2-12" name="__codelineno-2-12" href="#__codelineno-2-12"></a>    scatter_gather --&gt; settings
-</span><span id="__span-2-13"><a id="__codelineno-2-13" name="__codelineno-2-13" href="#__codelineno-2-13"></a>    scatter_gather --&gt; utils_filesys
-</span><span id="__span-2-14"><a id="__codelineno-2-14" name="__codelineno-2-14" href="#__codelineno-2-14"></a>    scatter_gather --&gt; utils_results
-</span><span id="__span-2-15"><a id="__codelineno-2-15" name="__codelineno-2-15" href="#__codelineno-2-15"></a>    scatter_gather --&gt; utils_s3
-</span><span id="__span-2-16"><a id="__codelineno-2-16" name="__codelineno-2-16" href="#__codelineno-2-16"></a>    experiments --&gt; registry
-</span><span id="__span-2-17"><a id="__codelineno-2-17" name="__codelineno-2-17" href="#__codelineno-2-17"></a>    experiments --&gt; scatter_gather
-</span><span id="__span-2-18"><a id="__codelineno-2-18" name="__codelineno-2-18" href="#__codelineno-2-18"></a>    experiments --&gt; settings
-</span><span id="__span-2-19"><a id="__codelineno-2-19" name="__codelineno-2-19" href="#__codelineno-2-19"></a>    experiments --&gt; utils_filesys
-</span><span id="__span-2-20"><a id="__codelineno-2-20" name="__codelineno-2-20" href="#__codelineno-2-20"></a>    experiments --&gt; utils_results
-</span><span id="__span-2-21"><a id="__codelineno-2-21" name="__codelineno-2-21" href="#__codelineno-2-21"></a>    experiments --&gt; utils_s3
-</span><span id="__span-2-22"><a id="__codelineno-2-22" name="__codelineno-2-22" href="#__codelineno-2-22"></a>    worker --&gt; hatchet_mod
-</span><span id="__span-2-23"><a id="__codelineno-2-23" name="__codelineno-2-23" href="#__codelineno-2-23"></a>    worker --&gt; registry
-</span><span id="__span-2-24"><a id="__codelineno-2-24" name="__codelineno-2-24" href="#__codelineno-2-24"></a>    worker --&gt; scatter_gather
-</span></code></pre></div>
+<pre class="mermaid"><code>flowchart TD
+    base --&gt; settings
+    base --&gt; utils_filesys["utils.filesys"]
+    base --&gt; utils_results["utils.results"]
+    registry --&gt; base
+    registry --&gt; hatchet_mod["hatchet"]
+    registry --&gt; settings
+    registry --&gt; utils_s3["utils.s3"]
+    scatter_gather --&gt; base
+    scatter_gather --&gt; registry
+    scatter_gather --&gt; hatchet_mod
+    scatter_gather --&gt; settings
+    scatter_gather --&gt; utils_filesys
+    scatter_gather --&gt; utils_results
+    scatter_gather --&gt; utils_s3
+    experiments --&gt; registry
+    experiments --&gt; scatter_gather
+    experiments --&gt; settings
+    experiments --&gt; utils_filesys
+    experiments --&gt; utils_results
+    experiments --&gt; utils_s3
+    worker --&gt; hatchet_mod
+    worker --&gt; registry
+    worker --&gt; scatter_gather</code></pre>
 
 
 

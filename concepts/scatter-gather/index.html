@@ -1194,32 +1194,31 @@
 </ol>
 <h2 id="the-solution-recursive-tree">The Solution: Recursive Tree<a class="headerlink" href="#the-solution-recursive-tree" title="Permanent link">#</a></h2>
 <p>Scythe solves this with a tree of scatter/gather nodes. A root node splits the full spec list into sub-batches and delegates each sub-batch to a child scatter/gather node. Each child repeats the process until reaching a base case, at which point it dispatches the actual experiment tasks and collects their results.</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>flowchart TD
-</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    Root[&quot;Root S/G&lt;br/&gt;N specs&quot;] --&gt; SG0[&quot;S/G 0&lt;br/&gt;N/f specs&quot;]
-</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>    Root --&gt; SG1[&quot;S/G 1&lt;br/&gt;N/f specs&quot;]
-</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>    Root --&gt; SG2[&quot;S/G 2&lt;br/&gt;N/f specs&quot;]
-</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>    SG0 --&gt; T0[&quot;Task 0&quot;]
-</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>    SG0 --&gt; T3[&quot;Task 3&quot;]
-</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>    SG0 --&gt; T6[&quot;Task 6&quot;]
-</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>    SG1 --&gt; T1[&quot;Task 1&quot;]
-</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>    SG1 --&gt; T4[&quot;Task 4&quot;]
-</span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>    SG1 --&gt; T7[&quot;Task 7&quot;]
-</span><span id="__span-0-11"><a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>    SG2 --&gt; T2[&quot;Task 2&quot;]
-</span><span id="__span-0-12"><a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>    SG2 --&gt; T5[&quot;Task 5&quot;]
-</span><span id="__span-0-13"><a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>    SG2 --&gt; T8[&quot;Task 8&quot;]
-</span></code></pre></div>
+<pre class="mermaid"><code>flowchart TD
+    Root["Root S/G&lt;br/&gt;N specs"] --&gt; SG0["S/G 0&lt;br/&gt;N/f specs"]
+    Root --&gt; SG1["S/G 1&lt;br/&gt;N/f specs"]
+    Root --&gt; SG2["S/G 2&lt;br/&gt;N/f specs"]
+    SG0 --&gt; T0["Task 0"]
+    SG0 --&gt; T3["Task 3"]
+    SG0 --&gt; T6["Task 6"]
+    SG1 --&gt; T1["Task 1"]
+    SG1 --&gt; T4["Task 4"]
+    SG1 --&gt; T7["Task 7"]
+    SG2 --&gt; T2["Task 2"]
+    SG2 --&gt; T5["Task 5"]
+    SG2 --&gt; T8["Task 8"]</code></pre>
 <p>In this example with <code>factor=3</code> and <code>max_depth=1</code>, the root splits 9 specs into 3 groups of 3, each handled by a child scatter/gather node that runs the actual experiments.</p>
 <h2 id="grid-stride-distribution">Grid-Stride Distribution<a class="headerlink" href="#grid-stride-distribution" title="Permanent link">#</a></h2>
 <p>Specs are not distributed in contiguous blocks. Instead, Scythe uses a <strong>grid-stride</strong> pattern: child <em>k</em> of a node with branching factor <em>f</em> receives specs at indices <em>k, k+f, k+2f, ...</em> from the parent's spec list.</p>
 <p>This ensures that if specs are ordered by some meaningful criterion, each child gets a representative sample rather than a contiguous chunk. It also distributes work more evenly when simulations have variable runtimes correlated with their position in the spec list.</p>
 <h2 id="recursionmap">RecursionMap<a class="headerlink" href="#recursionmap" title="Permanent link">#</a></h2>
 <p>The <code>RecursionMap</code> model controls the shape of the scatter/gather tree:</p>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">scythe.scatter_gather</span><span class="w"> </span><span class="kn">import</span> <span class="n">RecursionMap</span>
-</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>
-</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="n">recursion_map</span> <span class="o">=</span> <span class="n">RecursionMap</span><span class="p">(</span>
-</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>    <span class="n">factor</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span>      <span class="c1"># each node fans out to 10 children</span>
-</span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>    <span class="n">max_depth</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span>    <span class="c1"># at most 2 levels of recursion before running experiments</span>
-</span><span id="__span-1-6"><a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="p">)</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">scythe.scatter_gather</span><span class="w"> </span><span class="kn">import</span> <span class="n">RecursionMap</span>
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="n">recursion_map</span> <span class="o">=</span> <span class="n">RecursionMap</span><span class="p">(</span>
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>    <span class="n">factor</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span>      <span class="c1"># each node fans out to 10 children</span>
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>    <span class="n">max_depth</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span>    <span class="c1"># at most 2 levels of recursion before running experiments</span>
+</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="p">)</span>
 </span></code></pre></div>
 <table>
 <thead>

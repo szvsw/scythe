@@ -1094,13 +1094,12 @@
 </ul>
 <h2 id="how-it-works">How It Works<a class="headerlink" href="#how-it-works" title="Permanent link">#</a></h2>
 <p>Scythe wraps your simulation function in Hatchet task middleware that handles artifact transfer, temporary directories, result serialization, and S3 upload. When you allocate an experiment, Scythe validates your specs, uploads input artifacts, and triggers a scatter/gather workflow that fans out individual tasks to a pool of workers.</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>flowchart LR
-</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    A[&quot;Define Schemas&quot;] --&gt; B[&quot;Register Experiment&quot;]
-</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>    B --&gt; C[&quot;Allocate&quot;]
-</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>    C --&gt; D[&quot;Scatter/Gather&quot;]
-</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>    D --&gt; E[&quot;Worker Pool&quot;]
-</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>    E --&gt; F[&quot;Results in S3&quot;]
-</span></code></pre></div>
+<pre class="mermaid"><code>flowchart LR
+    A["Define Schemas"] --&gt; B["Register Experiment"]
+    B --&gt; C["Allocate"]
+    C --&gt; D["Scatter/Gather"]
+    D --&gt; E["Worker Pool"]
+    E --&gt; F["Results in S3"]</code></pre>
 <h2 id="quick-links">Quick Links<a class="headerlink" href="#quick-links" title="Permanent link">#</a></h2>
 <table>
 <thead>
