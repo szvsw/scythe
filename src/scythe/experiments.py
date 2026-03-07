@@ -512,10 +512,11 @@ class BaseExperiment(BaseModel, Generic[TInput, TOutput], arbitrary_types_allowe
             manifest_path = tdir / "manifest.yml"
             io_path = tdir / "experiment_io_spec.yml"
             input_artifacts_path = tdir / "input_artifacts.yml"
+            workflow_spec_path = tdir / "workflow_spec.yml"
 
             # dump and upload the schema
             with open(io_path, "w") as f:
-                yaml.dump(schema, f, indent=2)
+                yaml.dump(schema, f, indent=2, sort_keys=False)
             io_file_key = experiment_run.io_spec_filekey
             s3_client.upload_file(
                 Bucket=self.storage_settings.BUCKET,
@@ -531,6 +532,7 @@ class BaseExperiment(BaseModel, Generic[TInput, TOutput], arbitrary_types_allowe
                         input_artifacts_s3_urls.model_dump(mode="json"),
                         f,
                         indent=2,
+                        sort_keys=False,
                     )
                 s3_client.upload_file(
                     Bucket=self.storage_settings.BUCKET,
@@ -540,13 +542,25 @@ class BaseExperiment(BaseModel, Generic[TInput, TOutput], arbitrary_types_allowe
 
             manifest = experiment_run.construct_manifest(workflow_run_id)
             with open(manifest_path, "w") as f:
-                yaml.dump(manifest.model_dump(mode="json"), f, indent=2)
+                yaml.dump(
+                    manifest.model_dump(mode="json"), f, indent=2, sort_keys=False
+                )
             manifest_file_key = experiment_run.manifest_filekey
             s3_client.upload_file(
                 Bucket=self.storage_settings.BUCKET,
                 Key=manifest_file_key,
                 Filename=manifest_path.as_posix(),
             )
+            if not isinstance(specs, Sequence):
+                with open(workflow_spec_path, "w") as f:
+                    yaml.dump(
+                        specs.model_dump(mode="json"), f, indent=2, sort_keys=False
+                    )
+                s3_client.upload_file(
+                    Bucket=self.storage_settings.BUCKET,
+                    Key=experiment_run.workflow_spec_filekey,
+                    Filename=workflow_spec_path.as_posix(),
+                )
 
         return experiment_run, run_ref
 
@@ -661,6 +675,11 @@ class ExperimentRun(BaseModel, Generic[TInput, TOutput]):
     def input_artifacts_filekey(self) -> str:
         """The key for the input artifacts file."""
         return f"{self.prefix}input_artifacts.yml"
+
+    @property
+    def workflow_spec_filekey(self) -> str:
+        """The key for the workflow spec file."""
+        return f"{self.prefix}workflow_spec.yml"
 
     def as_uri(self, key: str) -> S3Url:
         """Convert a key to a uri."""
