@@ -229,11 +229,15 @@ class ExperimentRegistry:
         return decorator
 
     @classmethod
-    def get_experiment(cls, name: str) -> ExperimentStandaloneType:
+    def get_experiment(
+        cls, name: str
+    ) -> ExperimentStandaloneType | ExperimentWorkflowType:
         """Get an experiment's Hatchet Stanadalone."""
-        if name not in cls._experiments_dict:
-            raise ExperimentTypeNotFound(name)
-        return cls._experiments_dict[name]
+        if name in cls._experiments_dict:
+            return cls._experiments_dict[name]
+        if name in cls._workflows_dict:
+            return cls._workflows_dict[name]
+        raise ExperimentTypeNotFound(name)
 
     @classmethod
     def experiments(cls) -> list[ExperimentStandaloneType]:

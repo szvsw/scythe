@@ -192,16 +192,13 @@ VersioningStrategy = Literal["bumpmajor", "bumpminor", "bumppatch", "keep"]
 DatetimeFormat = "%Y-%m-%d_%H-%M-%S"
 
 
-class BaseExperiment(BaseModel, Generic[TInput, TOutput], arbitrary_types_allowed=True):
-    """A base experiment."""
+class SerializableExperiment(
+    BaseModel, Generic[TInput, TOutput], arbitrary_types_allowed=True
+):
+    """A serializable experiment or workflow.."""
 
+    # TODO: Workflows are not currently deserializable, only standalones
     experiment: Standalone[TInput, TOutput] | Workflow[TInput]
-    run_name: str | None = None
-    storage_settings: ScytheStorageSettings = Field(
-        default_factory=lambda: ScytheStorageSettings()
-    )
-
-    _latest_version_cache: "VersionedExperiment[TInput, TOutput] | None" = None
 
     @field_validator("experiment", mode="before")
     def get_experiment_from_str(cls, v):
@@ -215,6 +212,19 @@ class BaseExperiment(BaseModel, Generic[TInput, TOutput], arbitrary_types_allowe
     def serialize_experiment(self, v, b) -> str:
         """Serialize the experiment to a string."""
         return v.name
+
+
+class BaseExperiment(
+    SerializableExperiment[TInput, TOutput], arbitrary_types_allowed=True
+):
+    """A base experiment."""
+
+    run_name: str | None = None
+    storage_settings: ScytheStorageSettings = Field(
+        default_factory=lambda: ScytheStorageSettings()
+    )
+
+    _latest_version_cache: "VersionedExperiment[TInput, TOutput] | None" = None
 
     @property
     def base_id(self) -> str:
