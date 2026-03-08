@@ -10,11 +10,16 @@ from typing import TYPE_CHECKING, Literal, TypeVar
 import pandas as pd
 from hatchet_sdk import Context, TriggerWorkflowOptions
 from hatchet_sdk.clients.admin import WorkflowRunTriggerConfig
+from hatchet_sdk.runnables.workflow import Workflow
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from scythe.base import BaseSpec, ExperimentInputSpec, ExperimentOutputSpec
 from scythe.hatchet import hatchet
-from scythe.registry import ExperimentRegistry, ExperimentStandaloneType, TOutput
+from scythe.registry import (
+    ExperimentRegistry,
+    ExperimentStandaloneType,
+    TOutput,
+)
 from scythe.settings import ScytheStorageSettings, timeout_settings
 from scythe.utils.filesys import S3Url, fetch_uri
 from scythe.utils.results import save_and_upload_parquets, transpose_dataframe_dict
@@ -128,7 +133,11 @@ class ScatterGatherInput(BaseSpec):
     @property
     def standalone(self) -> ExperimentStandaloneType:
         """Get the experiment standalone."""
-        return ExperimentRegistry.get_experiment(self.task_name)
+        runnable = ExperimentRegistry.get_runnable(self.task_name)
+        if isinstance(runnable, Workflow):
+            msg = f"Runnable {runnable.name} is a workflow, not a standalone."
+            raise TypeError(msg)
+        return runnable
 
     @cached_property
     def specs(self) -> list[ExperimentInputSpec]:

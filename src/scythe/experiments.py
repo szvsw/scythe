@@ -192,30 +192,30 @@ VersioningStrategy = Literal["bumpmajor", "bumpminor", "bumppatch", "keep"]
 DatetimeFormat = "%Y-%m-%d_%H-%M-%S"
 
 
-class SerializableExperiment(
+class SerializableRunnable(
     BaseModel, Generic[TInput, TOutput], arbitrary_types_allowed=True
 ):
-    """A serializable experiment or workflow.."""
+    """A serializable runnable."""
 
     # TODO: Workflows are not currently deserializable, only standalones
-    experiment: Standalone[TInput, TOutput] | Workflow[TInput]
+    runnable: Standalone[TInput, TOutput] | Workflow[TInput]
 
-    @field_validator("experiment", mode="before")
-    def get_experiment_from_str(cls, v):
-        """Get the experiment from a string."""
+    @field_validator("runnable", mode="before")
+    def get_runnable_from_str(cls, v):
+        """Get the runnable from a string."""
         if isinstance(v, str):
-            standalone = ExperimentRegistry.get_experiment(v)
-            return standalone
+            runnable = ExperimentRegistry.get_runnable(v)
+            return runnable
         return v
 
-    @field_serializer("experiment")
-    def serialize_experiment(self, v, b) -> str:
-        """Serialize the experiment to a string."""
+    @field_serializer("runnable")
+    def serialize_runnable(self, v, b) -> str:
+        """Serialize the runnable to a string."""
         return v.name
 
 
 class BaseExperiment(
-    SerializableExperiment[TInput, TOutput], arbitrary_types_allowed=True
+    SerializableRunnable[TInput, TOutput], arbitrary_types_allowed=True
 ):
     """A base experiment."""
 
@@ -229,7 +229,7 @@ class BaseExperiment(
     @property
     def base_id(self) -> str:
         """The base experiment id."""
-        return self.run_name or self.experiment.name
+        return self.run_name or self.runnable.name
 
     @property
     def prefix(self) -> str:
@@ -289,7 +289,7 @@ class BaseExperiment(
         """The latest results for the experiment."""
         latest_version = self.latest_version()
         if latest_version is None:
-            raise ExperimentNotFoundError(self.experiment.name)
+            raise ExperimentNotFoundError(self.runnable.name)
         return latest_version.latest_run_results
 
     def resolve_next_version(
@@ -313,9 +313,9 @@ class BaseExperiment(
 
     def check_spec_type(self, spec: TInput) -> None:
         """Check that the type of the spec matches the expected type."""
-        if not isinstance(spec, self.experiment.input_validator_type):
+        if not isinstance(spec, self.runnable.input_validator_type):
             raise ExperimentSpecsMismatchError(
-                expected_type=self.experiment.input_validator_type,
+                expected_type=self.runnable.input_validator_type,
                 actual_type=type(spec),
             )
 
@@ -324,11 +324,11 @@ class BaseExperiment(
         mismatching_types = [
             type(spec)
             for spec in specs
-            if not isinstance(spec, self.experiment.input_validator_type)
+            if not isinstance(spec, self.runnable.input_validator_type)
         ]
         if mismatching_types:
             raise ExperimentSpecsMismatchError(
-                expected_type=self.experiment.input_validator_type,
+                expected_type=self.runnable.input_validator_type,
                 actual_type=mismatching_types[0],
             )
 
@@ -455,16 +455,16 @@ class BaseExperiment(
         )
         specs_uri = uris[df_name]
 
-        if isinstance(self.experiment, Workflow):
+        if isinstance(self.runnable, Workflow):
             if isinstance(specs, Sequence):
                 msg = "Workflows do not yet support batching."
                 raise TypeError(msg)
-            run_ref = self.experiment.run_no_wait(
+            run_ref = self.runnable.run_no_wait(
                 specs,
                 options=TriggerWorkflowOptions(
                     additional_metadata={
                         "experiment_id": experiment_run.experiment_id,
-                        "experiment_name": self.experiment.name,
+                        "experiment_name": self.runnable.name,
                     },
                 ),
             )
@@ -473,7 +473,7 @@ class BaseExperiment(
             # of the scatter/gather task
             scatter_gather_input = ScatterGatherInput(
                 experiment_id=experiment_run.experiment_id,
-                task_name=self.experiment.name,
+                task_name=self.runnable.name,
                 specs_uri=specs_uri,
                 recursion_map=recursion_map
                 or RecursionMap(path=None, factor=10, max_depth=0),
@@ -485,7 +485,7 @@ class BaseExperiment(
                 options=TriggerWorkflowOptions(
                     additional_metadata={
                         "experiment_id": experiment_run.experiment_id,
-                        "experiment_name": self.experiment.name,  # TOD: should this be experiment run name?
+                        "experiment_name": self.runnable.name,  # TOD: should this be experiment run name?
                         "level": 0,
                     },
                 ),
@@ -495,11 +495,11 @@ class BaseExperiment(
 
         # Now, we can upload some various metadata
         # files to the run dir
-        input_validator = self.experiment.input_validator_type
-        if isinstance(self.experiment, Workflow):
+        input_validator = self.runnable.input_validator_type
+        if isinstance(self.runnable, Workflow):
             output_validator = NoneType
         else:
-            output_validator = self.experiment.output_validator_type
+            output_validator = self.runnable.output_validator_type
 
         # if output_validator is None:
         #     msg = "Output validator is not set for experiment"
@@ -617,7 +617,7 @@ class VersionedExperiment(BaseModel, Generic[TInput, TOutput]):
         """The latest run for the versioned experiment."""
         runs = self.list_runs()
         if not runs:
-            raise ExperimentNotFoundError(self.base_experiment.experiment.name)
+            raise ExperimentNotFoundError(self.base_experiment.runnable.name)
         return max(runs, key=lambda r: r.timestamp)
 
     @property
@@ -702,7 +702,7 @@ class ExperimentRun(BaseModel, Generic[TInput, TOutput]):
         manifest = ExperimentRunManifest(
             workflow_run_id=workflow_run_id,
             experiment_id=self.experiment_id,
-            experiment_name=self.versioned_experiment.base_experiment.experiment.name,
+            experiment_name=self.versioned_experiment.base_experiment.runnable.name,
             io_spec=self.as_uri(self.io_spec_filekey),
             input_artifacts=self.as_uri(self.input_artifacts_filekey),
             specs_uri=self.as_uri(self.specs_filekey),

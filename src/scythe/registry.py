@@ -83,7 +83,7 @@ def _function_accepts_tempdir(fn_: ExperimentFunction) -> bool:
 class ExperimentRegistry:
     """An experiment registry for standalone task steps."""
 
-    _experiments_dict: ClassVar[dict[str, ExperimentStandaloneType]] = {}
+    _standalones_dict: ClassVar[dict[str, ExperimentStandaloneType]] = {}
     _workflows_dict: ClassVar[dict[str, ExperimentWorkflowType]] = {}
 
     @overload
@@ -110,7 +110,7 @@ class ExperimentRegistry:
             task_safe = cast(ExperimentWorkflowType, task)
             if (
                 task_safe.name in cls._workflows_dict
-                or task_safe.name in cls._experiments_dict
+                or task_safe.name in cls._standalones_dict
             ):
                 raise ExperimentTypeExists(task_safe.name)
             cls._workflows_dict[task_safe.name] = task_safe
@@ -118,11 +118,11 @@ class ExperimentRegistry:
 
         task_safe = cast(ExperimentStandaloneType, task)
         if (
-            task_safe.name in cls._experiments_dict
+            task_safe.name in cls._standalones_dict
             or task_safe.name in cls._workflows_dict
         ):
             raise ExperimentTypeExists(task_safe.name)
-        cls._experiments_dict[task_safe.name] = task_safe
+        cls._standalones_dict[task_safe.name] = task_safe
         return task_safe
 
     @classmethod
@@ -229,12 +229,12 @@ class ExperimentRegistry:
         return decorator
 
     @classmethod
-    def get_experiment(
+    def get_runnable(
         cls, name: str
     ) -> ExperimentStandaloneType | ExperimentWorkflowType:
         """Get an experiment's Hatchet Stanadalone."""
-        if name in cls._experiments_dict:
-            return cls._experiments_dict[name]
+        if name in cls._standalones_dict:
+            return cls._standalones_dict[name]
         if name in cls._workflows_dict:
             return cls._workflows_dict[name]
         raise ExperimentTypeNotFound(name)
@@ -242,4 +242,4 @@ class ExperimentRegistry:
     @classmethod
     def experiments(cls) -> list[ExperimentStandaloneType]:
         """Get all experiments."""
-        return list(cls._experiments_dict.values())
+        return list(cls._standalones_dict.values())
