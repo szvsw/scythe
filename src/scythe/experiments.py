@@ -203,7 +203,7 @@ class SerializableRunnable(
     def __deepcopy__(self, memo: dict[int, Any] | None = None) -> Self:
         """Deep copy the runnable which is not copyable."""
         warnings.warn(
-            "Deep copying a SerializableRunnable is will not copy the runnable itself.",
+            "Deep copying a SerializableRunnable will not copy the runnable itself.",
             stacklevel=3,
         )
         runnable = self.runnable
