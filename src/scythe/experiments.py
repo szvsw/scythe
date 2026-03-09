@@ -1,12 +1,13 @@
 """Allocate an experiment to a workflow run."""
 
 import tempfile
+import warnings
 from collections.abc import Callable, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from pathlib import Path
 from types import NoneType
-from typing import TYPE_CHECKING, Any, Generic, Literal, overload
+from typing import TYPE_CHECKING, Any, Generic, Literal, Self, overload
 
 import pandas as pd
 import yaml
@@ -197,8 +198,20 @@ class SerializableRunnable(
 ):
     """A serializable runnable."""
 
-    # TODO: Workflows are not currently deserializable, only standalones
     runnable: Standalone[TInput, TOutput] | Workflow[TInput]
+
+    def __deepcopy__(self, memo: dict[int, Any] | None = None) -> Self:
+        """Deep copy the runnable which is not copyable."""
+        warnings.warn(
+            "Deep copying a SerializableRunnable is will not copy the runnable itself.",
+            stacklevel=3,
+        )
+        runnable = self.runnable
+        self.runnable = None  # pyright: ignore [reportAttributeAccessIssue]
+        new_self = super().__deepcopy__(memo)
+        new_self.runnable = runnable
+        self.runnable = runnable
+        return new_self
 
     @field_validator("runnable", mode="before")
     def get_runnable_from_str(cls, v):
