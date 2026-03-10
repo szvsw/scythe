@@ -1,17 +1,7 @@
 """Worker for Scythe."""
 
 import os
-
-try:
-    from enum import StrEnum  # pyright: ignore [reportAssignmentType]
-except ImportError:
-    from enum import Enum
-
-    class StrEnum(str, Enum):
-        """StrEnum backport for Python 3.10."""
-
-        pass
-
+from enum import StrEnum
 
 from hatchet_sdk.labels import DesiredWorkerLabel
 from hatchet_sdk.runnables.workflow import BaseWorkflow
@@ -22,7 +12,7 @@ from scythe.registry import ExperimentFunction, ExperimentRegistry
 from scythe.scatter_gather import scatter_gather
 
 
-class ScytheWorkerLabel(StrEnum):
+class ScytheWorkerLabel(StrEnum):  # pyright: ignore [reportGeneralTypeIssues]
     """Label keys used by Scythe workers for task affinity.
 
     Use these when specifying ``desired_worker_labels`` on experiments so tasks
