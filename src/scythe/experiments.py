@@ -9,14 +9,6 @@ from pathlib import Path
 from types import NoneType
 from typing import TYPE_CHECKING, Any, Generic, Literal, overload
 
-try:
-    # python 3.11+
-    from typing import Self  # pyright: ignore [reportAttributeAccessIssue]
-except ImportError:
-    # python 3.10
-    from typing_extensions import Self  # noqa: UP035
-
-
 import pandas as pd
 import yaml
 from hatchet_sdk import TaskRunRef, TriggerWorkflowOptions, WorkflowRunRef
@@ -208,7 +200,7 @@ class SerializableRunnable(
 
     runnable: Standalone[TInput, TOutput] | Workflow[TInput]
 
-    def __deepcopy__(self, memo: dict[int, Any] | None = None) -> Self:
+    def __deepcopy__(self, memo: dict[int, Any] | None = None):
         """Deep copy the runnable which is not copyable."""
         warnings.warn(
             "Deep copying a SerializableRunnable will not copy the runnable itself.",
