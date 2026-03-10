@@ -1,14 +1,48 @@
 """Worker for Scythe."""
 
 import os
+from enum import StrEnum
 
+from hatchet_sdk.labels import DesiredWorkerLabel
 from hatchet_sdk.runnables.workflow import BaseWorkflow
 from pydantic import Field
 from pydantic_settings import BaseSettings
 
-from scythe.hatchet import hatchet
 from scythe.registry import ExperimentFunction, ExperimentRegistry
 from scythe.scatter_gather import scatter_gather
+
+
+class WorkerLabel(StrEnum):
+    """Label keys used by Scythe workers for task affinity.
+
+    Use these when specifying ``desired_worker_labels`` on experiments so tasks
+    are routed to workers with matching capabilities. For example::
+
+        from scythe.worker import WorkerLabel
+        from hatchet_sdk.labels import DesiredWorkerLabel
+
+        @ExperimentRegistry.Register(
+            desired_worker_labels={
+                WorkerLabel.HAS_GPU: DesiredWorkerLabel(value=True, required=True),
+            }
+        )
+        def my_gpu_experiment(input_spec: MyInput) -> MyOutput:
+            ...
+    """
+
+    HIGH_MEMORY = "high_memory"
+    HIGH_CPU = "high_cpu"
+    HAS_GPU = "has_gpu"
+
+    @property
+    def worker_label(self) -> DesiredWorkerLabel:
+        """Return the worker label."""
+        return DesiredWorkerLabel(value=self.yes, required=True)
+
+    @property
+    def yes(self) -> str:
+        """Return the yes value for the worker label."""
+        return "yes"
 
 
 class WorkerNameConfig(BaseSettings):
@@ -103,9 +137,13 @@ class ScytheWorkerConfig(BaseSettings, env_prefix="SCYTHE_WORKER_"):
     def labels(self) -> dict[str, str | int]:
         """Return the labels for the worker."""
         return {
-            "high_memory": self.HIGH_MEMORY,
-            "high_cpu": self.HIGH_CPU,
-            "has_gpu": self.HAS_GPU,
+            label.value: label.yes
+            for (label, high) in (
+                (WorkerLabel.HIGH_MEMORY, self.HIGH_MEMORY),
+                (WorkerLabel.HIGH_CPU, self.HIGH_CPU),
+                (WorkerLabel.HAS_GPU, self.HAS_GPU),
+            )
+            if high
         }
 
     @property
@@ -131,13 +169,14 @@ class ScytheWorkerConfig(BaseSettings, env_prefix="SCYTHE_WORKER_"):
         """Return the name of the worker."""
         return self.NAME if self.NAME else self.WORKER_NAME_CONFIG.name
 
-    # TODO: allow passing in a list of workflows/etc to additionally register.
     def start(
         self,
         experiments: list[ExperimentFunction] | None = None,
         additional_workflows: list[BaseWorkflow] | None = None,
     ) -> None:
         """Make a worker."""
+        from scythe.hatchet import hatchet
+
         for experiment in experiments or []:
             ExperimentRegistry.Register()(experiment)
 
