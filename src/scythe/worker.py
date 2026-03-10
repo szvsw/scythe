@@ -2,6 +2,7 @@
 
 import os
 
+from hatchet_sdk.runnables.workflow import BaseWorkflow
 from pydantic import Field
 from pydantic_settings import BaseSettings
 
@@ -88,6 +89,7 @@ class ScytheWorkerConfig(BaseSettings, env_prefix="SCYTHE_WORKER_"):
     HIGH_CPU: bool = Field(
         default=False, description="Whether the worker has high CPU."
     )
+    HAS_GPU: bool = Field(default=False, description="Whether the worker has a GPU.")
 
     WORKER_NAME_CONFIG: WorkerNameConfig = Field(
         default_factory=WorkerNameConfig,
@@ -103,6 +105,7 @@ class ScytheWorkerConfig(BaseSettings, env_prefix="SCYTHE_WORKER_"):
         return {
             "high_memory": self.HIGH_MEMORY,
             "high_cpu": self.HIGH_CPU,
+            "has_gpu": self.HAS_GPU,
         }
 
     @property
@@ -128,7 +131,12 @@ class ScytheWorkerConfig(BaseSettings, env_prefix="SCYTHE_WORKER_"):
         """Return the name of the worker."""
         return self.NAME if self.NAME else self.WORKER_NAME_CONFIG.name
 
-    def start(self, experiments: list[ExperimentFunction] | None = None) -> None:
+    # TODO: allow passing in a list of workflows/etc to additionally register.
+    def start(
+        self,
+        experiments: list[ExperimentFunction] | None = None,
+        additional_workflows: list[BaseWorkflow] | None = None,
+    ) -> None:
         """Make a worker."""
         for experiment in experiments or []:
             ExperimentRegistry.Register()(experiment)
@@ -139,8 +147,10 @@ class ScytheWorkerConfig(BaseSettings, env_prefix="SCYTHE_WORKER_"):
             durable_slots=self.computed_durable_slots,
             labels=self.labels,
         )
-        workflows = ([scatter_gather] if self.DOES_FAN else []) + (
-            ExperimentRegistry.experiments() if self.DOES_LEAF else []
+        workflows = (
+            ([scatter_gather] if self.DOES_FAN else [])
+            + (ExperimentRegistry.experiments() if self.DOES_LEAF else [])
+            + (additional_workflows or [])
         )
         for workflow in workflows:
             worker.register_workflow(workflow)
