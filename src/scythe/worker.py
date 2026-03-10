@@ -12,7 +12,7 @@ from scythe.registry import ExperimentFunction, ExperimentRegistry
 from scythe.scatter_gather import scatter_gather
 
 
-class WorkerLabel(StrEnum):
+class ScytheWorkerLabel(StrEnum):
     """Label keys used by Scythe workers for task affinity.
 
     Use these when specifying ``desired_worker_labels`` on experiments so tasks
@@ -139,9 +139,9 @@ class ScytheWorkerConfig(BaseSettings, env_prefix="SCYTHE_WORKER_"):
         return {
             label.value: label.yes
             for (label, high) in (
-                (WorkerLabel.HIGH_MEMORY, self.HIGH_MEMORY),
-                (WorkerLabel.HIGH_CPU, self.HIGH_CPU),
-                (WorkerLabel.HAS_GPU, self.HAS_GPU),
+                (ScytheWorkerLabel.HIGH_MEMORY, self.HIGH_MEMORY),
+                (ScytheWorkerLabel.HIGH_CPU, self.HIGH_CPU),
+                (ScytheWorkerLabel.HAS_GPU, self.HAS_GPU),
             )
             if high
         }
