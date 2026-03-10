@@ -18,16 +18,26 @@ class ScytheWorkerLabel(StrEnum):
     Use these when specifying ``desired_worker_labels`` on experiments so tasks
     are routed to workers with matching capabilities. For example::
 
-        from scythe.worker import WorkerLabel
-        from hatchet_sdk.labels import DesiredWorkerLabel
+    from scythe.worker import ScytheWorkerLabel
+    from hatchet_sdk.labels import DesiredWorkerLabel
 
-        @ExperimentRegistry.Register(
-            desired_worker_labels={
-                WorkerLabel.HAS_GPU: DesiredWorkerLabel(value=True, required=True),
-            }
-        )
-        def my_gpu_experiment(input_spec: MyInput) -> MyOutput:
-            ...
+    ```python
+    @ExperimentRegistry.Register(
+        desired_worker_labels=ScytheWorkerLabel.HAS_GPU.worker_label
+    )
+    def my_gpu_experiment(input_spec: MyInput) -> MyOutput:
+        ...
+    ```
+
+    Or for attaching multiple labels:
+
+    ```python
+    @ExperimentRegistry.Register(
+        desired_worker_labels={**ScytheWorkerLabel.HAS_GPU.worker_label, **ScytheWorkerLabel.HIGH_MEMORY.worker_label}
+    )
+    def my_gpu_experiment(input_spec: MyInput) -> MyOutput:
+        ...
+    ```
     """
 
     HIGH_MEMORY = "high_memory"
@@ -35,9 +45,9 @@ class ScytheWorkerLabel(StrEnum):
     HAS_GPU = "has_gpu"
 
     @property
-    def worker_label(self) -> DesiredWorkerLabel:
+    def worker_label(self) -> dict[str, DesiredWorkerLabel]:
         """Return the worker label."""
-        return DesiredWorkerLabel(value=self.yes, required=True)
+        return {self.value: DesiredWorkerLabel(value=self.yes, required=True)}
 
     @property
     def yes(self) -> str:
