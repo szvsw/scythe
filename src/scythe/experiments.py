@@ -7,7 +7,15 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from pathlib import Path
 from types import NoneType
-from typing import TYPE_CHECKING, Any, Generic, Literal, Self, overload
+from typing import TYPE_CHECKING, Any, Generic, Literal, overload
+
+try:
+    # python 3.11+
+    from typing import Self  # pyright: ignore [reportAttributeAccessIssue]
+except ImportError:
+    # python 3.10
+    from typing_extensions import Self  # noqa: UP035
+
 
 import pandas as pd
 import yaml

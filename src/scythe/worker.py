@@ -1,7 +1,17 @@
 """Worker for Scythe."""
 
 import os
-from enum import StrEnum
+
+try:
+    from enum import StrEnum  # pyright: ignore [reportAssignmentType]
+except ImportError:
+    from enum import Enum
+
+    class StrEnum(str, Enum):
+        """StrEnum backport for Python 3.10."""
+
+        pass
+
 
 from hatchet_sdk.labels import DesiredWorkerLabel
 from hatchet_sdk.runnables.workflow import BaseWorkflow
