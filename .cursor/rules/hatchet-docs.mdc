@@ -1,0 +1,15 @@
+----
+description: Hatchet documentation MCP server
+alwaysApply: true
+---
+
+When working with Hatchet (task queues, workflows, durable execution), use the
+Hatchet MCP docs server for accurate, up-to-date API reference and examples.
+
+MCP server URL: https://docs.hatchet.run/api/mcp
+
+Use the search_docs tool to find relevant documentation pages, or get_full_docs
+for comprehensive context. Documentation covers Python, TypeScript, and Go SDKs.
+--
+alwaysApply: true
+---
