@@ -9,6 +9,7 @@ copyright: Maintained by <a href="https://github.com/szvsw">Sam Wolk</a>.
 
 nav:
   - Home: index.md
+  - Worker Configuration: worker-configuration.md
   - Blog:
       - Building Scythe: blog/building-scythe.md
 
