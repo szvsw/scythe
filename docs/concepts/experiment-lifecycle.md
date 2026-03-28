@@ -22,7 +22,7 @@ flowchart TD
 
 You create two Pydantic models:
 
-- **`ExperimentInputSpec`** -- Defines the fields that parameterize each simulation run. These become the columns of the input DataFrame and the MultiIndex of the output DataFrames.
+- **`ExperimentInputSpec`** -- Defines the fields that parameterize each simulation run. These become the columns of the input DataFrame and the MultiIndex of the output DataFrames. Subclasses can also override `computed_features` to add derived index levels.
 - **`ExperimentOutputSpec`** -- Defines the scalar output fields and optional `FileReference` outputs. Scalar fields become columns of `scalars.pq`; file reference fields become columns of `result_file_refs.pq`.
 
 Both support `FileReference` fields (`S3Url | HttpUrl | pathlib.Path`) for handling file-based inputs and outputs.
@@ -82,7 +82,7 @@ Each leaf experiment task:
 2. Optionally replaces the `log` method with Hatchet's context logger
 3. Fetches remote file references to a local cache (or temp directory)
 4. Calls your simulation function
-5. Extracts scalar outputs into a DataFrame row with a MultiIndex from the input spec
+5. Extracts scalar outputs into a DataFrame row with a MultiIndex from the input spec fields and any `computed_features`
 6. Uploads any output `FileReference` files to S3 and records their URIs
 7. Uploads any additional DataFrames to S3
 8. Returns the serialized output spec

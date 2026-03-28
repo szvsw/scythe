@@ -5,7 +5,21 @@ All notable changes to **scythe-engine** are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.1.0] - Unreleased
+## [1.2.0] - Unreleased
+
+### Added
+
+- `computed_features` property on `ExperimentInputSpec` for attaching derived
+  scalar index levels to the `MultiIndex` without defining them as Pydantic
+  fields. Override in subclasses to return a `dict[str, ComputedFeatureValue]`.
+- `ComputedFeatureValue` type alias (`int | float | str`).
+
+### Changed
+
+- `make_multiindex` now tracks index keys cumulatively to detect overlaps
+  between Pydantic fields, computed features, and `additional_index_data`.
+
+## [1.1.0] - 2026-03-28
 
 ### Added
 
@@ -39,4 +53,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Deferred `hatchet` client import in `ScytheWorkerConfig.start()` to avoid
   import-time side effects.
 
-[1.1.0]: https://github.com/szvsw/scythe/compare/v1.0.0...HEAD
+[1.2.0]: https://github.com/szvsw/scythe/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/szvsw/scythe/compare/v1.0.0...v1.1.0

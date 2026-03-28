@@ -8,7 +8,7 @@ Core base classes for experiment input and output schemas.
 
 ::: scythe.base
 options:
-members: - BaseSpec - ExperimentInputSpec - ExperimentOutputSpec
+members: - BaseSpec - ExperimentInputSpec - ExperimentOutputSpec - ComputedFeatureValue
 show_root_heading: false
 
 ## scythe.registry

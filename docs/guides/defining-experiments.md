@@ -35,7 +35,27 @@ You do not need to set these when creating specs -- they are populated automatic
 
 - `log(msg)` -- Log a message. During task execution, this is redirected to the Hatchet context logger so messages appear in the Hatchet dashboard.
 - `fetch_uri(uri, use_cache=True)` -- Fetch a file from S3, HTTP, or the local filesystem and return the local path. Results are cached by default.
-- `make_multiindex(n_rows=1, additional_index_data=None)` -- Construct a `pd.MultiIndex` from the spec fields, used for indexing output DataFrames.
+- `make_multiindex(n_rows=1, additional_index_data=None)` -- Construct a `pd.MultiIndex` from the spec fields (plus any `computed_features`), used for indexing output DataFrames.
+
+### Computed Features
+
+Sometimes you need extra index levels that are **derived** from existing fields rather than stored as their own Pydantic fields. Override the `computed_features` property to return a dictionary of scalar values that will be merged into the `MultiIndex` automatically:
+
+```python
+from pydantic import Field
+from scythe.base import ComputedFeatureValue, ExperimentInputSpec
+
+
+class MyInput(ExperimentInputSpec):
+    temperature: float = Field(..., description="Temperature [K]", ge=0)
+    pressure: float = Field(..., description="Pressure [Pa]", ge=0)
+
+    @property
+    def computed_features(self) -> dict[str, ComputedFeatureValue]:
+        return {"temp_bucket": "high" if self.temperature > 500 else "low"}
+```
+
+Computed feature keys must not overlap with Pydantic field names or any keys supplied via `additional_index_data`. Values must be `int`, `float`, or `str` (the `ComputedFeatureValue` type alias). In `make_multiindex`, computed features are inserted after the Pydantic field dump and before `additional_index_data`.
 
 ## Output Specs
 
