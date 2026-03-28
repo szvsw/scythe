@@ -1,0 +1,48 @@
+---
+description: Process for updating documentation to reflect code changes in a PR
+alwaysApply: false
+---
+# Updating Docs for a PR
+
+When updating docs to match code changes from a branch/PR, follow this process.
+
+## 1. Understand the changes
+
+- `git diff main...HEAD --stat` for an overview, then full diffs on source files.
+- Identify renamed fields/methods, new classes/enums, changed signatures, and new capabilities.
+
+## 2. Audit existing docs
+
+- Read every doc page that could reference changed code (guides, concepts, reference, README).
+- Search (`grep`) for old API names, parameter names, and class references across `docs/` and `README.md`.
+
+## 3. Fix stale code examples first
+
+- Rename old parameters/fields in all code blocks (e.g. `experiment=` → `runnable=`).
+- After bulk renames, grep to confirm zero remaining stale references.
+
+## 4. Update conceptual docs
+
+- Architecture diagrams, lifecycle flowcharts, and module description tables must reflect new capabilities.
+- If a feature adds an alternate execution path, show it as a branch in diagrams (mermaid `alt`/decision nodes), not a replacement.
+
+## 5. Update reference docs
+
+- Add new env vars to configuration tables.
+- Add new public classes/enums to API reference member lists.
+- Update `.env` examples if new config options exist.
+
+## 6. Frame features by motivation, not implementation
+
+- Describe **why** a feature exists and **when** to use it, not just the mechanics.
+- Avoid tying a capability to a single type when it works more broadly (e.g. "single-spec allocation works with any runnable" not "single-spec is for Workflows only").
+
+## 7. New pages
+
+- When adding a doc page, also add it to `mkdocs.yml` nav.
+- Use the latest upstream API conventions in code examples (e.g. check Hatchet docs for current SDK patterns).
+
+## 8. Verify
+
+- Run `mkdocs build -s` (strict mode) to catch broken links and warnings.
+- Grep for any remaining stale API names after all edits.
