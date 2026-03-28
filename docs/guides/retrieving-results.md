@@ -63,6 +63,8 @@ The primary output file. Its structure is:
 | 42.0   | 95.0       |
 | 38.5   | 91.2       |
 
+If your `ExperimentInputSpec` subclass overrides `computed_features`, those derived values also appear as additional index levels (between the Pydantic fields and any `additional_index_data`).
+
 Fields that cannot be represented in a pandas MultiIndex (e.g., `FileReference`, lists, dicts) are automatically excluded from the index.
 
 ### result_file_refs.pq
