@@ -12,14 +12,15 @@ After a successful experiment run, Scythe writes the following to S3:
 ├── experiment_io_spec.yml
 ├── input_artifacts.yml
 ├── specs.pq
+├── workflow_spec.yml               # single-spec runs only
 ├── artifacts/
 │   └── <field_name>/
 │       ├── file1.ext
 │       └── file2.ext
-├── scatter-gather/
+├── scatter-gather/                  # batch runs only
 │   ├── input/
 │   └── output/
-├── final/
+├── final/                           # batch runs only
 │   ├── scalars.pq
 │   ├── result_file_refs.pq
 │   └── <user_dataframe>.pq
@@ -81,7 +82,7 @@ Has the same MultiIndex as `scalars.pq`, with columns for each `FileReference` o
 from scythe.experiments import BaseExperiment
 from my_experiments import simulate_energy
 
-experiment = BaseExperiment(experiment=simulate_energy)
+experiment = BaseExperiment(runnable=simulate_energy)
 
 # List all versions
 versions = experiment.list_versions()

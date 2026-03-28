@@ -113,7 +113,7 @@ def sample(n: int = 10) -> list[BuildingSimulationInput]:
 
 specs = sample(10)
 
-experiment = BaseExperiment(experiment=simulate_energy)
+experiment = BaseExperiment(runnable=simulate_energy)
 
 run, ref = experiment.allocate(
     specs,

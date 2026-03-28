@@ -3,11 +3,11 @@
 import inspect
 import tempfile
 from pathlib import Path
-from typing import ClassVar, Literal, Protocol, TypeVar, cast, get_type_hints
+from typing import ClassVar, Literal, Protocol, TypeVar, cast, get_type_hints, overload
 
 from hatchet_sdk import Context, Worker
 from hatchet_sdk.labels import DesiredWorkerLabel
-from hatchet_sdk.runnables.workflow import Standalone
+from hatchet_sdk.runnables.workflow import Standalone, Workflow
 from hatchet_sdk.utils.timedelta_to_expression import Duration
 
 from scythe.base import ExperimentInputSpec, ExperimentOutputSpec
@@ -15,7 +15,10 @@ from scythe.hatchet import hatchet
 from scythe.settings import timeout_settings
 from scythe.utils.s3 import s3_client
 
+# TODO: it's a bummer that these are not generic, would prefer to use TInput and TOutput.
+# Is there ar eason we don't?
 ExperimentStandaloneType = Standalone[ExperimentInputSpec, ExperimentOutputSpec]
+ExperimentWorkflowType = Workflow[ExperimentInputSpec]
 
 TInput = TypeVar("TInput", bound=ExperimentInputSpec, contravariant=True)
 TOutput = TypeVar("TOutput", bound=ExperimentOutputSpec, covariant=True)
@@ -80,18 +83,46 @@ def _function_accepts_tempdir(fn_: ExperimentFunction) -> bool:
 class ExperimentRegistry:
     """An experiment registry for standalone task steps."""
 
-    _experiments_dict: ClassVar[dict[str, ExperimentStandaloneType]] = {}
+    _standalones_dict: ClassVar[dict[str, ExperimentStandaloneType]] = {}
+    _workflows_dict: ClassVar[dict[str, ExperimentWorkflowType]] = {}
 
+    @overload
     @classmethod
     def Include(
         cls,
         task: Standalone[TInput, TOutput],
-    ) -> ExperimentStandaloneType:
+    ) -> ExperimentStandaloneType: ...
+
+    @overload
+    @classmethod
+    def Include(
+        cls,
+        task: Workflow[TInput],
+    ) -> ExperimentWorkflowType: ...
+
+    @classmethod
+    def Include(
+        cls,
+        task: Standalone[TInput, TOutput] | Workflow[TInput],
+    ) -> ExperimentStandaloneType | ExperimentWorkflowType:
         """Register an experiment whose input and output schemas conform to the base types."""
+        if isinstance(task, Workflow):
+            task_safe = cast(ExperimentWorkflowType, task)
+            if (
+                task_safe.name in cls._workflows_dict
+                or task_safe.name in cls._standalones_dict
+            ):
+                raise ExperimentTypeExists(task_safe.name)
+            cls._workflows_dict[task_safe.name] = task_safe
+            return task_safe
+
         task_safe = cast(ExperimentStandaloneType, task)
-        if task_safe.name in cls._experiments_dict:
+        if (
+            task_safe.name in cls._standalones_dict
+            or task_safe.name in cls._workflows_dict
+        ):
             raise ExperimentTypeExists(task_safe.name)
-        cls._experiments_dict[task_safe.name] = task_safe
+        cls._standalones_dict[task_safe.name] = task_safe
         return task_safe
 
     @classmethod
@@ -198,13 +229,17 @@ class ExperimentRegistry:
         return decorator
 
     @classmethod
-    def get_experiment(cls, name: str) -> ExperimentStandaloneType:
+    def get_runnable(
+        cls, name: str
+    ) -> ExperimentStandaloneType | ExperimentWorkflowType:
         """Get an experiment's Hatchet Stanadalone."""
-        if name not in cls._experiments_dict:
-            raise ExperimentTypeNotFound(name)
-        return cls._experiments_dict[name]
+        if name in cls._standalones_dict:
+            return cls._standalones_dict[name]
+        if name in cls._workflows_dict:
+            return cls._workflows_dict[name]
+        raise ExperimentTypeNotFound(name)
 
     @classmethod
     def experiments(cls) -> list[ExperimentStandaloneType]:
         """Get all experiments."""
-        return list(cls._experiments_dict.values())
+        return list(cls._standalones_dict.values())

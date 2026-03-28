@@ -4,14 +4,11 @@ import logging
 import shutil
 from collections.abc import Callable
 from pathlib import Path
-from typing import TYPE_CHECKING, Optional
-
-try:
-    # python 3.11+
-    from typing import Self  # pyright: ignore [reportAttributeAccessIssue]
-except ImportError:
-    # python 3.10
-    from typing_extensions import Self  # noqa: UP035
+from typing import (
+    TYPE_CHECKING,
+    Optional,
+    Self,
+)
 
 import requests
 from pydantic import AnyUrl, BaseModel, FilePath, HttpUrl, UrlConstraints

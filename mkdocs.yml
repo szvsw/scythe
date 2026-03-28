@@ -19,6 +19,7 @@ nav:
   - Guides:
       - Defining Experiments: guides/defining-experiments.md
       - Running Experiments: guides/running-experiments.md
+      - Workflow & Single-Run Experiments: guides/workflow-experiments.md
       - Workers: guides/workers.md
       - Retrieving Results: guides/retrieving-results.md
   - Deployment:

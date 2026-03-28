@@ -7,14 +7,12 @@ import logging
 import tempfile
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, cast
-
-try:
-    # python 3.11+
-    from typing import Self  # pyright: ignore [reportAttributeAccessIssue]
-except ImportError:
-    # python 3.10
-    from typing_extensions import Self  # noqa: UP035
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Self,
+    cast,
+)
 
 import pandas as pd
 from pydantic import AnyUrl, BaseModel, Field, field_serializer, field_validator

@@ -1,0 +1,53 @@
+---
+description: Guidelines for maintaining CHANGELOG.md when making code changes
+globs: CHANGELOG.md
+alwaysApply: false
+---
+
+# Changelog Maintenance
+
+This project keeps a `CHANGELOG.md` following [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+
+## When to update
+
+Add an entry to the topmost version section whenever a change is user-facing:
+- New features, configuration options, or public API additions → **Added**
+- Changes to existing behavior, renamed parameters, dependency bumps → **Changed**
+- Bug fixes → **Fixed**
+- Removed features or deprecated APIs → **Removed** / **Deprecated**
+
+Do NOT add entries for internal-only refactors, doc typos, or CI tweaks unless they affect the user.
+
+## How to write entries
+
+Entries must be based on the **actual code diff** against the base tag, not on
+commit messages. Commit messages in this project are often terse or vague.
+
+1. Read the version from `pyproject.toml` and find the latest git tag.
+2. Run `git diff <latest-tag>...HEAD -- src/ pyproject.toml` to see real changes.
+3. Read relevant docs (`docs/`) to understand the intent behind changes.
+4. Write entries that describe the user-visible effect, not the implementation.
+
+Mark breaking changes with a **BREAKING** prefix. Multi-line entries are fine
+when a feature needs a brief explanation.
+
+## Format rules
+
+- Write entries as imperative sentences (e.g. "Add workflow versioning support").
+- Reference PR/issue numbers with `(#N)` when available.
+- Group entries under the standard headers: Added, Changed, Deprecated, Removed, Fixed, Security.
+- Keep entries concise — one line per change, or two–three for complex features.
+
+## Version workflow
+
+Changelog updates happen on PR branches. The target version is always read from
+the `version` field in `pyproject.toml` — never guess or hardcode a version number.
+
+When starting a new release section:
+1. Read `version` from `pyproject.toml` (e.g. `1.2.0`).
+2. Find the latest git tag to determine the previous release (e.g. `v1.1.0`).
+3. Create a heading `## [1.2.0] - Unreleased` at the top of the changelog.
+4. Add the comparison link at the bottom: `[1.2.0]: https://github.com/szvsw/scythe/compare/v1.1.0...HEAD`.
+
+When the PR merges and a release is tagged, replace `Unreleased` with the
+actual date (`YYYY-MM-DD`) and update the comparison link to point at the new tag.

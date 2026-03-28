@@ -1,15 +1,18 @@
 """Allocate an experiment to a workflow run."""
 
 import tempfile
+import warnings
 from collections.abc import Callable, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Generic, Literal
+from types import NoneType
+from typing import TYPE_CHECKING, Any, Generic, Literal, overload
 
 import pandas as pd
 import yaml
-from hatchet_sdk import TaskRunRef, TriggerWorkflowOptions
+from hatchet_sdk import TaskRunRef, TriggerWorkflowOptions, WorkflowRunRef
+from hatchet_sdk.runnables.workflow import Workflow
 from pydantic import BaseModel, Field, FilePath, field_serializer, field_validator
 from tqdm import tqdm
 
@@ -190,10 +193,45 @@ VersioningStrategy = Literal["bumpmajor", "bumpminor", "bumppatch", "keep"]
 DatetimeFormat = "%Y-%m-%d_%H-%M-%S"
 
 
-class BaseExperiment(BaseModel, Generic[TInput, TOutput], arbitrary_types_allowed=True):
+class SerializableRunnable(
+    BaseModel, Generic[TInput, TOutput], arbitrary_types_allowed=True
+):
+    """A serializable runnable."""
+
+    runnable: Standalone[TInput, TOutput] | Workflow[TInput]
+
+    def __deepcopy__(self, memo: dict[int, Any] | None = None):
+        """Deep copy the runnable which is not copyable."""
+        warnings.warn(
+            "Deep copying a SerializableRunnable will not copy the runnable itself.",
+            stacklevel=3,
+        )
+        runnable = self.runnable
+        self.runnable = None  # pyright: ignore [reportAttributeAccessIssue]
+        new_self = super().__deepcopy__(memo)
+        new_self.runnable = runnable
+        self.runnable = runnable
+        return new_self
+
+    @field_validator("runnable", mode="before")
+    def get_runnable_from_str(cls, v):
+        """Get the runnable from a string."""
+        if isinstance(v, str):
+            runnable = ExperimentRegistry.get_runnable(v)
+            return runnable
+        return v
+
+    @field_serializer("runnable")
+    def serialize_runnable(self, v, b) -> str:
+        """Serialize the runnable to a string."""
+        return v.name
+
+
+class BaseExperiment(
+    SerializableRunnable[TInput, TOutput], arbitrary_types_allowed=True
+):
     """A base experiment."""
 
-    experiment: Standalone[TInput, TOutput]
     run_name: str | None = None
     storage_settings: ScytheStorageSettings = Field(
         default_factory=lambda: ScytheStorageSettings()
@@ -201,23 +239,10 @@ class BaseExperiment(BaseModel, Generic[TInput, TOutput], arbitrary_types_allowe
 
     _latest_version_cache: "VersionedExperiment[TInput, TOutput] | None" = None
 
-    @field_validator("experiment", mode="before")
-    def get_experiment_from_str(cls, v):
-        """Get the experiment from a string."""
-        if isinstance(v, str):
-            standalone = ExperimentRegistry.get_experiment(v)
-            return standalone
-        return v
-
-    @field_serializer("experiment")
-    def serialize_experiment(self, v, b) -> str:
-        """Serialize the experiment to a string."""
-        return v.name
-
     @property
     def base_id(self) -> str:
         """The base experiment id."""
-        return self.run_name or self.experiment.name
+        return self.run_name or self.runnable.name
 
     @property
     def prefix(self) -> str:
@@ -262,7 +287,7 @@ class BaseExperiment(BaseModel, Generic[TInput, TOutput], arbitrary_types_allowe
         """The latest run for the experiment."""
         latest_version = self.latest_version()
         if latest_version is None:
-            raise ExperimentNotFoundError(self.experiment.name)
+            raise ExperimentNotFoundError(self.base_id)
         return latest_version.latest_run
 
     def latest_results_for_version(self, version: SemVer) -> dict[str, str]:
@@ -277,7 +302,7 @@ class BaseExperiment(BaseModel, Generic[TInput, TOutput], arbitrary_types_allowe
         """The latest results for the experiment."""
         latest_version = self.latest_version()
         if latest_version is None:
-            raise ExperimentNotFoundError(self.experiment.name)
+            raise ExperimentNotFoundError(self.runnable.name)
         return latest_version.latest_run_results
 
     def resolve_next_version(
@@ -299,20 +324,29 @@ class BaseExperiment(BaseModel, Generic[TInput, TOutput], arbitrary_types_allowe
                 version = latest_version.version
         return version
 
+    def check_spec_type(self, spec: TInput) -> None:
+        """Check that the type of the spec matches the expected type."""
+        if not isinstance(spec, self.runnable.input_validator_type):
+            raise ExperimentSpecsMismatchError(
+                expected_type=self.runnable.input_validator_type,
+                actual_type=type(spec),
+            )
+
     def check_spec_types(self, specs: Sequence[Any]) -> None:
         """Check that the types of the specs match the expected type."""
         mismatching_types = [
             type(spec)
             for spec in specs
-            if not isinstance(spec, self.experiment.input_validator_type)
+            if not isinstance(spec, self.runnable.input_validator_type)
         ]
         if mismatching_types:
             raise ExperimentSpecsMismatchError(
-                expected_type=self.experiment.input_validator_type,
+                expected_type=self.runnable.input_validator_type,
                 actual_type=mismatching_types[0],
             )
 
-    def allocate(  # noqa: C901
+    @overload
+    def allocate(
         self,
         specs: Sequence[TInput],
         version: SemVer | VersioningStrategy = "bumpmajor",
@@ -320,11 +354,39 @@ class BaseExperiment(BaseModel, Generic[TInput, TOutput], arbitrary_types_allowe
         overwrite_experiment_id: bool = True,
         recursion_map: RecursionMap | None = None,
         s3_client: S3Client | None = None,
-    ) -> tuple["ExperimentRun", TaskRunRef[ScatterGatherInput, ScatterGatherResult]]:
+    ) -> tuple[
+        "ExperimentRun", TaskRunRef[ScatterGatherInput, ScatterGatherResult]
+    ]: ...
+
+    @overload
+    def allocate(
+        self,
+        specs: TInput,
+        version: SemVer | VersioningStrategy = "bumpmajor",
+        overwrite_sort_index: bool = True,
+        overwrite_experiment_id: bool = True,
+        recursion_map: RecursionMap | None = None,
+        s3_client: S3Client | None = None,
+    ) -> tuple["ExperimentRun", WorkflowRunRef]: ...
+
+    def allocate(  # noqa: C901
+        self,
+        specs: Sequence[TInput] | TInput,
+        version: SemVer | VersioningStrategy = "bumpmajor",
+        overwrite_sort_index: bool = True,
+        overwrite_experiment_id: bool = True,
+        recursion_map: RecursionMap | None = None,
+        s3_client: S3Client | None = None,
+    ) -> tuple[
+        "ExperimentRun",
+        TaskRunRef[ScatterGatherInput, ScatterGatherResult] | WorkflowRunRef,
+    ]:
         """Allocate an experiment to a workflow run."""
         s3_client = s3_client or s3
         version = self.resolve_next_version(version, s3_client)
-        self.check_spec_types(specs)
+        self.check_spec_types(specs) if isinstance(
+            specs, Sequence
+        ) else self.check_spec_type(specs)
 
         cur_time = datetime.now()
         experiment_run = ExperimentRun(
@@ -334,8 +396,9 @@ class BaseExperiment(BaseModel, Generic[TInput, TOutput], arbitrary_types_allowe
             timestamp=cur_time,
         )
 
-        specs = experiment_run.overwrite_spec_meta(
-            specs, overwrite_experiment_id, overwrite_sort_index
+        spec_list = specs if isinstance(specs, Sequence) else [specs]
+        experiment_run.overwrite_spec_meta(
+            spec_list, overwrite_experiment_id, overwrite_sort_index
         )
 
         # handle local file transfer to s3
@@ -349,7 +412,9 @@ class BaseExperiment(BaseModel, Generic[TInput, TOutput], arbitrary_types_allowe
 
         # first, we need to get a record of the `field: FilePath` pairs
         # for each set of specs
-        local_input_artifact_paths = [spec._local_artifact_file_paths for spec in specs]
+        local_input_artifact_paths = [
+            spec._local_artifact_file_paths for spec in spec_list
+        ]
         # then, we transpose the list of dicts into a dict of sets
         # this is so that we can deduplicate shared input artifacts
         # grouped by the field they are used for.
@@ -385,14 +450,14 @@ class BaseExperiment(BaseModel, Generic[TInput, TOutput], arbitrary_types_allowe
                 )
             )
             # and then we update the specs with the new s3 urls
-            for spec in specs:
+            for spec in spec_list:
                 for field_name, fpath in spec._local_artifact_file_paths.items():
                     uri_map = input_artifacts_s3_url_maps[field_name]
                     uri = uri_map[fpath]
                     setattr(spec, field_name, uri)
 
         # next, we save the specs to a parquet file and upload it to s3
-        df = pd.DataFrame([s.model_dump(mode="json") for s in specs])
+        df = pd.DataFrame([s.model_dump(mode="json") for s in spec_list])
         df_name = experiment_run.specs_filename
 
         uris = save_and_upload_parquets(
@@ -403,34 +468,51 @@ class BaseExperiment(BaseModel, Generic[TInput, TOutput], arbitrary_types_allowe
         )
         specs_uri = uris[df_name]
 
-        # Now, we can finally allocate the experiment to a workflow run
-        # of the scatter/gather task
-        scatter_gather_input = ScatterGatherInput(
-            experiment_id=experiment_run.experiment_id,
-            task_name=self.experiment.name,
-            specs_uri=specs_uri,
-            recursion_map=recursion_map
-            or RecursionMap(path=None, factor=10, max_depth=0),
-            storage_settings=self.storage_settings,
-        )
+        if isinstance(self.runnable, Workflow):
+            if isinstance(specs, Sequence):
+                msg = "Workflows do not yet support batching."
+                raise TypeError(msg)
+            run_ref = self.runnable.run_no_wait(
+                specs,
+                options=TriggerWorkflowOptions(
+                    additional_metadata={
+                        "experiment_id": experiment_run.experiment_id,
+                        "experiment_name": self.runnable.name,
+                    },
+                ),
+            )
+        else:
+            # Now, we can finally allocate the experiment to a workflow run
+            # of the scatter/gather task
+            scatter_gather_input = ScatterGatherInput(
+                experiment_id=experiment_run.experiment_id,
+                task_name=self.runnable.name,
+                specs_uri=specs_uri,
+                recursion_map=recursion_map
+                or RecursionMap(path=None, factor=10, max_depth=0),
+                storage_settings=self.storage_settings,
+            )
 
-        run_ref = scatter_gather.run_no_wait(
-            scatter_gather_input,
-            options=TriggerWorkflowOptions(
-                additional_metadata={
-                    "experiment_id": experiment_run.experiment_id,
-                    "experiment_name": self.experiment.name,
-                    "level": 0,
-                },
-            ),
-        )
+            run_ref = scatter_gather.run_no_wait(
+                scatter_gather_input,
+                options=TriggerWorkflowOptions(
+                    additional_metadata={
+                        "experiment_id": experiment_run.experiment_id,
+                        "experiment_name": self.runnable.name,  # TOD: should this be experiment run name?
+                        "level": 0,
+                    },
+                ),
+            )
 
         workflow_run_id = run_ref.workflow_run_id
 
         # Now, we can upload some various metadata
         # files to the run dir
-        input_validator = self.experiment.input_validator_type
-        output_validator = self.experiment.output_validator_type
+        input_validator = self.runnable.input_validator_type
+        if isinstance(self.runnable, Workflow):
+            output_validator = NoneType
+        else:
+            output_validator = self.runnable.output_validator_type
 
         # if output_validator is None:
         #     msg = "Output validator is not set for experiment"
@@ -453,10 +535,11 @@ class BaseExperiment(BaseModel, Generic[TInput, TOutput], arbitrary_types_allowe
             manifest_path = tdir / "manifest.yml"
             io_path = tdir / "experiment_io_spec.yml"
             input_artifacts_path = tdir / "input_artifacts.yml"
+            workflow_spec_path = tdir / "workflow_spec.yml"
 
             # dump and upload the schema
             with open(io_path, "w") as f:
-                yaml.dump(schema, f, indent=2)
+                yaml.dump(schema, f, indent=2, sort_keys=False)
             io_file_key = experiment_run.io_spec_filekey
             s3_client.upload_file(
                 Bucket=self.storage_settings.BUCKET,
@@ -472,6 +555,7 @@ class BaseExperiment(BaseModel, Generic[TInput, TOutput], arbitrary_types_allowe
                         input_artifacts_s3_urls.model_dump(mode="json"),
                         f,
                         indent=2,
+                        sort_keys=False,
                     )
                 s3_client.upload_file(
                     Bucket=self.storage_settings.BUCKET,
@@ -481,13 +565,25 @@ class BaseExperiment(BaseModel, Generic[TInput, TOutput], arbitrary_types_allowe
 
             manifest = experiment_run.construct_manifest(workflow_run_id)
             with open(manifest_path, "w") as f:
-                yaml.dump(manifest.model_dump(mode="json"), f, indent=2)
+                yaml.dump(
+                    manifest.model_dump(mode="json"), f, indent=2, sort_keys=False
+                )
             manifest_file_key = experiment_run.manifest_filekey
             s3_client.upload_file(
                 Bucket=self.storage_settings.BUCKET,
                 Key=manifest_file_key,
                 Filename=manifest_path.as_posix(),
             )
+            if not isinstance(specs, Sequence):
+                with open(workflow_spec_path, "w") as f:
+                    yaml.dump(
+                        specs.model_dump(mode="json"), f, indent=2, sort_keys=False
+                    )
+                s3_client.upload_file(
+                    Bucket=self.storage_settings.BUCKET,
+                    Key=experiment_run.workflow_spec_filekey,
+                    Filename=workflow_spec_path.as_posix(),
+                )
 
         return experiment_run, run_ref
 
@@ -534,7 +630,7 @@ class VersionedExperiment(BaseModel, Generic[TInput, TOutput]):
         """The latest run for the versioned experiment."""
         runs = self.list_runs()
         if not runs:
-            raise ExperimentNotFoundError(self.base_experiment.experiment.name)
+            raise ExperimentNotFoundError(self.base_experiment.runnable.name)
         return max(runs, key=lambda r: r.timestamp)
 
     @property
@@ -603,6 +699,11 @@ class ExperimentRun(BaseModel, Generic[TInput, TOutput]):
         """The key for the input artifacts file."""
         return f"{self.prefix}input_artifacts.yml"
 
+    @property
+    def workflow_spec_filekey(self) -> str:
+        """The key for the workflow spec file."""
+        return f"{self.prefix}workflow_spec.yml"
+
     def as_uri(self, key: str) -> S3Url:
         """Convert a key to a uri."""
         return S3Url(
@@ -614,7 +715,7 @@ class ExperimentRun(BaseModel, Generic[TInput, TOutput]):
         manifest = ExperimentRunManifest(
             workflow_run_id=workflow_run_id,
             experiment_id=self.experiment_id,
-            experiment_name=self.versioned_experiment.base_experiment.experiment.name,
+            experiment_name=self.versioned_experiment.base_experiment.runnable.name,
             io_spec=self.as_uri(self.io_spec_filekey),
             input_artifacts=self.as_uri(self.input_artifacts_filekey),
             specs_uri=self.as_uri(self.specs_filekey),
@@ -626,14 +727,13 @@ class ExperimentRun(BaseModel, Generic[TInput, TOutput]):
         specs: Sequence[TInput],
         overwrite_experiment_id: bool = True,
         overwrite_sort_index: bool = True,
-    ) -> Sequence[TInput]:
+    ):
         """Overwrite the metadata for the specs."""
         for i, spec in enumerate(specs):
             if overwrite_experiment_id:
                 spec.experiment_id = self.experiment_id
             if overwrite_sort_index:
                 spec.sort_index = i
-        return specs
 
     @property
     def final_results_dirkey(self) -> str:

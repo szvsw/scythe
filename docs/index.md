@@ -13,7 +13,8 @@ Researchers and engineers can define typed input/output schemas, register simula
 - **Recursive scatter/gather** -- Scale from tens to millions of tasks using a configurable tree of scatter/gather nodes that parallelize both dispatch and result collection.
 - **Versioned experiment runs** -- Each allocation is scoped by semantic version and timestamp, creating a reproducible record of every experiment in your S3 bucket.
 - **Structured result aggregation** -- Scalar outputs, file references, and user-defined DataFrames are automatically collected into Parquet files with a MultiIndex built from your input specs.
-- **Flexible worker pools** -- Configure workers with role flags (leaf vs. fan), affinity labels (high CPU/memory), and environment-based slot counts.
+- **Standalone and Workflow runnables** -- Register single-function experiments with `@ExperimentRegistry.Register()`, or multi-step Hatchet `Workflow` pipelines with `ExperimentRegistry.Include()`. Allocate a batch for scatter/gather, or a single spec for a versioned one-off run.
+- **Flexible worker pools** -- Configure workers with role flags (leaf vs. fan), typed affinity labels (`ScytheWorkerLabel`), and environment-based slot counts.
 - **Multiple deployment targets** -- Run locally with Docker Compose, on a lab cluster, or at cloud scale on AWS ECS with spot capacity.
 
 ## How It Works
