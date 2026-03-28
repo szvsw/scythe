@@ -26,7 +26,7 @@ Experiment allocation, versioning, and result retrieval.
 
 ::: scythe.experiments
 options:
-members: - BaseExperiment - VersionedExperiment - ExperimentRun - SemVer - ExperimentRunManifest - InputArtifactLocations
+members: - SerializableRunnable - BaseExperiment - VersionedExperiment - ExperimentRun - SemVer - ExperimentRunManifest - InputArtifactLocations
 show_root_heading: false
 
 ## scythe.scatter_gather
@@ -44,7 +44,7 @@ Worker configuration and startup.
 
 ::: scythe.worker
 options:
-members: - ScytheWorkerConfig - WorkerNameConfig
+members: - ScytheWorkerLabel - ScytheWorkerConfig - WorkerNameConfig
 show_root_heading: false
 
 ## scythe.settings

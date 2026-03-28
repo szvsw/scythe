@@ -11,13 +11,13 @@ from scythe.experiments import BaseExperiment
 from my_experiments import simulate_energy
 
 experiment = BaseExperiment(
-    experiment=simulate_energy,  # (1)!
-    run_name="custom_name",      # (2)!
+    runnable=simulate_energy,  # (1)!
+    run_name="custom_name",    # (2)!
 )
 ```
 
-1. The registered experiment function (or its Hatchet task name as a string).
-2. Optional custom name for the S3 directory. Defaults to the Hatchet task name (`scythe_experiment_<fn_name>`).
+1. The registered runnable -- either a `Standalone` experiment function or a Hatchet `Workflow` (or its Hatchet task name as a string).
+2. Optional custom name for the S3 directory. Defaults to the Hatchet task name.
 
 ## Generating Specs
 
@@ -66,15 +66,19 @@ run, ref = experiment.allocate(
 3. `experiment_id` and `sort_index` are set on each spec
 4. Local `FileReference` files are uploaded to S3
 5. Specs are serialized to `specs.pq` in S3
-6. The scatter/gather workflow is triggered on Hatchet
+6. Execution is triggered:
+   - **Batch (list of specs)**: The scatter/gather workflow is triggered on Hatchet
+   - **Single spec (one-off run)**: The runnable is triggered directly, bypassing scatter/gather. A `workflow_spec.yml` is also uploaded. Works with both `Standalone` and `Workflow` runnables.
 7. Metadata files (`manifest.yml`, `experiment_io_spec.yml`, `input_artifacts.yml`) are written to S3
 
 ### Return Values
 
-`allocate()` returns a tuple:
+`allocate()` returns a tuple of `(ExperimentRun, ref)`:
 
 - **`run`** (`ExperimentRun`) -- Metadata about the experiment run (version, timestamp, S3 keys).
-- **`ref`** (`TaskRunRef`) -- A Hatchet reference to the root scatter/gather workflow, which you can use to wait for completion.
+- **`ref`** -- A Hatchet reference you can use to wait for completion. The type depends on the allocation:
+  - `TaskRunRef` for batch scatter/gather runs
+  - `WorkflowRunRef` for single-spec one-off runs
 
 ## Versioning
 
@@ -151,9 +155,32 @@ max_depth = max(0, math.ceil(math.log(n_specs / max_per_leaf, factor))) if n_spe
 recursion_map = RecursionMap(factor=factor, max_depth=max_depth)
 ```
 
+## Single-Spec Allocation
+
+You can pass a **single spec** (rather than a list) to `allocate()` for a versioned one-off run. This works with any runnable -- `Standalone` or `Workflow` -- and bypasses scatter/gather entirely:
+
+```python
+from scythe.experiments import BaseExperiment
+from my_experiments import simulate_energy, MyInput
+
+experiment = BaseExperiment(runnable=simulate_energy)
+
+spec = MyInput(
+    temperature=300.0,
+    pressure=1e5,
+    material="steel",
+    experiment_id="placeholder",
+    sort_index=0,
+)
+
+run, ref = experiment.allocate(spec, version="bumpminor")
+```
+
+The runnable is triggered directly on Hatchet, giving you full Scythe versioning and S3 metadata for a single run. This is useful for testing, debugging, or one-off experiments. For more details, including multi-step `Workflow` pipelines, see [Workflow & Single-Run Experiments](workflow-experiments.md).
+
 ## Waiting for Results
 
-The `TaskRunRef` returned by `allocate()` lets you wait for the experiment to complete:
+The `ref` returned by `allocate()` lets you wait for the experiment to complete:
 
 ```python
 # Blocking
@@ -163,7 +190,7 @@ result = ref.result()
 result = await ref.aio_result()
 ```
 
-The result is a `ScatterGatherResult` containing the S3 URIs of the aggregated output DataFrames.
+For batch allocations, the result is a `ScatterGatherResult` containing the S3 URIs of the aggregated output DataFrames. For single-spec allocations, the result is the runnable's return value.
 
 ## S3 Directory Layout
 
@@ -175,13 +202,14 @@ After a successful run, the experiment directory in S3 contains:
 ├── experiment_io_spec.yml          # JSON Schema for input/output types
 ├── input_artifacts.yml             # S3 URIs of uploaded input artifacts
 ├── specs.pq                        # All input specs as Parquet
+├── workflow_spec.yml               # Input spec (single-spec runs only)
 ├── artifacts/                      # Uploaded input artifact files
 │   └── <field_name>/
 │       └── <file>
-├── scatter-gather/                 # Intermediate scatter/gather data
+├── scatter-gather/                 # Intermediate scatter/gather data (batch only)
 │   ├── input/
 │   └── output/
-├── final/                          # Aggregated results
+├── final/                          # Aggregated results (batch only)
 │   ├── scalars.pq
 │   ├── result_file_refs.pq
 │   └── <user_dataframe>.pq

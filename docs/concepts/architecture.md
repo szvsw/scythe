@@ -9,7 +9,7 @@ block-beta
     columns 1
     block:user["User Layer"]
         A["ExperimentInputSpec / ExperimentOutputSpec"]
-        B["@ExperimentRegistry.Register()"]
+        B["@ExperimentRegistry.Register() / Include()"]
         C["BaseExperiment.allocate()"]
     end
     block:core["Scythe Core"]
@@ -27,8 +27,8 @@ block-beta
 The user layer is what researchers and engineers interact with. It consists of three steps:
 
 1. **Define schemas** -- Subclass `ExperimentInputSpec` and `ExperimentOutputSpec` with typed Pydantic fields that describe the inputs and outputs of a single simulation run.
-2. **Register the experiment** -- Decorate your simulation function with `@ExperimentRegistry.Register()`, which wraps it in Hatchet task middleware.
-3. **Allocate and run** -- Create a `BaseExperiment` and call `.allocate(specs, version=...)` to launch the experiment on a pool of workers.
+2. **Register the runnable** -- Decorate your simulation function with `@ExperimentRegistry.Register()` (for `Standalone` tasks), or register a Hatchet `Workflow` with `ExperimentRegistry.Include()`.
+3. **Allocate and run** -- Create a `BaseExperiment` and call `.allocate(specs, version=...)` to launch the experiment on a pool of workers. Pass a sequence of specs for batch scatter/gather execution, or a single spec for a versioned one-off run.
 
 No knowledge of queues, S3, serialization, or container orchestration is required.
 
@@ -36,13 +36,13 @@ No knowledge of queues, S3, serialization, or container orchestration is require
 
 The core layer is composed of five modules that implement experiment orchestration:
 
-| Module           | Responsibility                                                                                                                                                                   |
-| ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `base`           | `ExperimentInputSpec`, `ExperimentOutputSpec`, `BaseSpec` -- schema base classes with file reference handling, MultiIndex construction, scalar extraction, and artifact transfer |
-| `registry`       | `ExperimentRegistry` -- decorator that wraps user functions in Hatchet tasks with pre/post middleware (artifact fetch, temp directory, S3 upload, DataFrame serialization)       |
-| `experiments`    | `BaseExperiment`, `VersionedExperiment`, `ExperimentRun`, `SemVer` -- allocation, versioning, S3 layout, manifest generation, and result retrieval                               |
-| `scatter_gather` | `ScatterGatherInput`, `RecursionMap`, `ScatterGatherResult` -- recursive fan-out/fan-in workflow with grid-stride partitioning and Parquet-based payload transfer                |
-| `worker`         | `ScytheWorkerConfig` -- worker configuration with role flags (`DOES_FAN`, `DOES_LEAF`), affinity labels, and environment-aware naming                                            |
+| Module           | Responsibility                                                                                                                                                                                                                            |
+| ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `base`           | `ExperimentInputSpec`, `ExperimentOutputSpec`, `BaseSpec` -- schema base classes with file reference handling, MultiIndex construction, scalar extraction, and artifact transfer                                                          |
+| `registry`       | `ExperimentRegistry` -- decorator that wraps user functions in Hatchet `Standalone` tasks with pre/post middleware, and `Include()` for registering Hatchet `Workflow` runnables                                                          |
+| `experiments`    | `SerializableRunnable`, `BaseExperiment`, `VersionedExperiment`, `ExperimentRun`, `SemVer` -- allocation (batch via scatter/gather or single-spec one-off), versioning, S3 layout, manifest generation, and result retrieval              |
+| `scatter_gather` | `ScatterGatherInput`, `RecursionMap`, `ScatterGatherResult` -- recursive fan-out/fan-in workflow with grid-stride partitioning and Parquet-based payload transfer (used for batch `Standalone` experiments)                               |
+| `worker`         | `ScytheWorkerConfig`, `ScytheWorkerLabel` -- worker configuration with role flags (`DOES_FAN`, `DOES_LEAF`), typed affinity labels (`HIGH_MEMORY`, `HIGH_CPU`, `HAS_GPU`), additional workflow registration, and environment-aware naming |
 
 ### Infrastructure Layer
 
@@ -67,17 +67,26 @@ sequenceDiagram
 
     User->>Scythe: allocate(specs, version)
     Scythe->>S3: Upload specs.pq, artifacts, manifest
-    Scythe->>Hatchet: Trigger scatter/gather workflow
-    Hatchet->>Workers: Dispatch scatter/gather task
-    Workers->>S3: Fetch specs, split into sub-batches
-    Workers->>Hatchet: Spawn child tasks (recurse or leaf)
-    Hatchet->>Workers: Dispatch leaf experiment tasks
-    Workers->>S3: Fetch input artifacts
-    Workers->>Workers: Run simulation function
-    Workers->>S3: Upload output files, DataFrames
-    Workers->>Hatchet: Return result
-    Hatchet->>Workers: Gather results at scatter/gather nodes
-    Workers->>S3: Write final/ scalars.pq, result_file_refs.pq
+
+    alt Batch allocation (Sequence of specs)
+        Scythe->>Hatchet: Trigger scatter/gather workflow
+        Hatchet->>Workers: Dispatch scatter/gather task
+        Workers->>S3: Fetch specs, split into sub-batches
+        Workers->>Hatchet: Spawn child tasks (recurse or leaf)
+        Hatchet->>Workers: Dispatch leaf experiment tasks
+        Workers->>S3: Fetch input artifacts
+        Workers->>Workers: Run simulation function
+        Workers->>S3: Upload output files, DataFrames
+        Workers->>Hatchet: Return result
+        Hatchet->>Workers: Gather results at scatter/gather nodes
+        Workers->>S3: Write final/ scalars.pq, result_file_refs.pq
+    else Single-spec allocation (one-off run)
+        Scythe->>Hatchet: Trigger runnable directly
+        Hatchet->>Workers: Dispatch task/workflow
+        Workers->>Workers: Execute runnable
+        Workers->>S3: Upload results
+    end
+
     User->>S3: Download results
 ```
 

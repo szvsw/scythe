@@ -187,6 +187,18 @@ def simulate_building(
     ...
 ```
 
+## Registering Workflow Runnables
+
+In addition to standalone functions, you can register Hatchet `Workflow` objects with `ExperimentRegistry.Include()`. This is useful for multi-step pipelines or complex DAGs:
+
+```python
+from scythe.registry import ExperimentRegistry
+
+ExperimentRegistry.Include(my_workflow)
+```
+
+Workflow runnables are allocated with a single spec (not a batch) and bypass the scatter/gather system entirely. For a complete guide on defining and running workflows, as well as single-spec allocation for any runnable, see [Workflow & Single-Run Experiments](workflow-experiments.md).
+
 ## Multiple Experiments
 
 You can define multiple experiments in your project. Each gets its own input/output types and registration. The worker will serve all registered experiments:

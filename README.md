@@ -304,7 +304,7 @@ from sample import sample
 if __name__ == "__main__":
 
     experiment = BaseExperiment(
-        experiment=simulate_energy
+        runnable=simulate_energy
 
     )
     specs = sample(10)

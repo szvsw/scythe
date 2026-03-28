@@ -66,6 +66,7 @@ SCYTHE_WORKER_DOES_FAN=True
 | `SCYTHE_WORKER_DURABLE_SLOTS` | `int`  | `1000`         | Number of durable (persistent) task slots        |
 | `SCYTHE_WORKER_HIGH_MEMORY`   | `bool` | `False`        | Label this worker as high-memory                 |
 | `SCYTHE_WORKER_HIGH_CPU`      | `bool` | `False`        | Label this worker as high-CPU                    |
+| `SCYTHE_WORKER_HAS_GPU`       | `bool` | `False`        | Label this worker as having a GPU                |
 | `SCYTHE_WORKER_DOES_FAN`      | `bool` | `True`         | Whether this worker handles scatter/gather tasks |
 | `SCYTHE_WORKER_DOES_LEAF`     | `bool` | `True`         | Whether this worker handles experiment tasks     |
 
@@ -78,19 +79,38 @@ If `SCYTHE_WORKER_SLOTS` is not set, Scythe auto-detects the CPU count:
 
 ### Worker Labels
 
-The `HIGH_MEMORY` and `HIGH_CPU` flags are exposed as Hatchet worker labels. You can use these with `desired_worker_labels` in `@ExperimentRegistry.Register()` to route specific experiments to appropriate workers:
+The `HIGH_MEMORY`, `HIGH_CPU`, and `HAS_GPU` flags are exposed as Hatchet worker labels. Scythe provides the `ScytheWorkerLabel` enum for type-safe label specification when routing experiments to appropriate workers:
 
 ```python
-from hatchet_sdk.labels import DesiredWorkerLabel
+from scythe.worker import ScytheWorkerLabel
 
 @ExperimentRegistry.Register(
-    desired_worker_labels={
-        "high_memory": DesiredWorkerLabel(value=True, required=True),
-    },
+    desired_worker_labels=ScytheWorkerLabel.HAS_GPU.worker_label,
 )
-def memory_intensive_simulation(input_spec: MyInput) -> MyOutput:
+def gpu_simulation(input_spec: MyInput) -> MyOutput:
     ...
 ```
+
+You can combine multiple labels using dict unpacking:
+
+```python
+@ExperimentRegistry.Register(
+    desired_worker_labels={
+        **ScytheWorkerLabel.HAS_GPU.worker_label,
+        **ScytheWorkerLabel.HIGH_MEMORY.worker_label,
+    },
+)
+def heavy_gpu_simulation(input_spec: MyInput) -> MyOutput:
+    ...
+```
+
+The available labels are:
+
+| Label                           | Description            |
+| ------------------------------- | ---------------------- |
+| `ScytheWorkerLabel.HIGH_MEMORY` | Worker has high memory |
+| `ScytheWorkerLabel.HIGH_CPU`    | Worker has high CPU    |
+| `ScytheWorkerLabel.HAS_GPU`     | Worker has a GPU       |
 
 ## Worker Naming
 
@@ -144,3 +164,17 @@ config.start(experiments=[my_simulation_fn])
 ```
 
 This calls `ExperimentRegistry.Register()` on each function before starting the worker.
+
+### Additional Workflows
+
+If you have Hatchet `Workflow` objects (e.g. multi-step pipelines registered via `ExperimentRegistry.Include()`) that the worker should serve, pass them with `additional_workflows`:
+
+```python
+from scythe.worker import ScytheWorkerConfig
+from my_workflows import my_pipeline_workflow
+
+config = ScytheWorkerConfig()
+config.start(additional_workflows=[my_pipeline_workflow])
+```
+
+These workflows are registered with the Hatchet worker alongside the scatter/gather and leaf experiment workflows.

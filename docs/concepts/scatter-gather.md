@@ -1,5 +1,8 @@
 # Scatter/Gather
 
+!!! note
+Scatter/gather is the execution path for **batch allocations** (a list of specs) only. When you pass a single spec to `allocate()`, the runnable is triggered directly on Hatchet and scatter/gather is bypassed. See [Workflow & Single-Run Experiments](../guides/workflow-experiments.md) for that path.
+
 Scythe uses a recursive scatter/gather pattern to parallelize both the dispatch and collection of experiment tasks. This allows it to scale from tens to millions of simulations without bottlenecking on a single node.
 
 ## The Problem

@@ -46,6 +46,7 @@ Configured via `ScytheWorkerConfig` (prefix: `SCYTHE_WORKER_`):
 | `SCYTHE_WORKER_DURABLE_SLOTS` | `int \| None` | `1000`        | Number of durable (persistent) task slots               |
 | `SCYTHE_WORKER_HIGH_MEMORY`   | `bool`        | `False`       | Advertise this worker as having high memory             |
 | `SCYTHE_WORKER_HIGH_CPU`      | `bool`        | `False`       | Advertise this worker as having high CPU                |
+| `SCYTHE_WORKER_HAS_GPU`       | `bool`        | `False`       | Advertise this worker as having a GPU                   |
 | `SCYTHE_WORKER_DOES_FAN`      | `bool`        | `True`        | Whether this worker handles scatter/gather tasks        |
 | `SCYTHE_WORKER_DOES_LEAF`     | `bool`        | `True`        | Whether this worker handles experiment (leaf) tasks     |
 
@@ -117,4 +118,5 @@ SCYTHE_TIMEOUT_EXPERIMENT_EXECUTION=5m
 # SCYTHE_WORKER_DOES_LEAF=True
 # SCYTHE_WORKER_DOES_FAN=True
 # SCYTHE_WORKER_SLOTS=4
+# SCYTHE_WORKER_HAS_GPU=False
 ```

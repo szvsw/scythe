@@ -6,13 +6,16 @@ This page describes the full lifecycle of a Scythe experiment, from schema defin
 
 ```mermaid
 flowchart TD
-    Define["1. Define Schemas"] --> Register["2. Register Experiment"]
+    Define["1. Define Schemas"] --> Register["2. Register Runnable"]
     Register --> Sample["3. Generate Specs"]
     Sample --> Allocate["4. Allocate"]
-    Allocate --> ScatterGather["5. Scatter/Gather"]
+    Allocate --> IsBatch{"Batch or single spec?"}
+    IsBatch -->|"Batch (list of specs)"| ScatterGather["5a. Scatter/Gather"]
+    IsBatch -->|"Single spec (one-off)"| DirectRun["5b. Direct Run"]
     ScatterGather --> Execute["6. Execute Tasks"]
     Execute --> Aggregate["7. Aggregate Results"]
-    Aggregate --> Retrieve["8. Retrieve Results"]
+    DirectRun --> Retrieve["8. Retrieve Results"]
+    Aggregate --> Retrieve
 ```
 
 ## 1. Define Schemas
@@ -24,15 +27,19 @@ You create two Pydantic models:
 
 Both support `FileReference` fields (`S3Url | HttpUrl | pathlib.Path`) for handling file-based inputs and outputs.
 
-## 2. Register the Experiment
+## 2. Register the Runnable
 
-The `@ExperimentRegistry.Register()` decorator transforms your simulation function into a Hatchet task. The decorator:
+There are two ways to register runnables with Scythe:
+
+**Standalone tasks** -- The `@ExperimentRegistry.Register()` decorator transforms your simulation function into a Hatchet `Standalone` task. The decorator:
 
 - Inspects the function signature to extract input/output types
 - Wraps the function in middleware that handles artifact fetching, temp directories, and result uploading
 - Registers the task with the global `ExperimentRegistry`
 
 The function must accept an `ExperimentInputSpec` subclass as its first argument and return an `ExperimentOutputSpec` subclass. It may optionally accept a `tempdir: Path` second argument.
+
+**Workflow runnables** -- `ExperimentRegistry.Include()` registers an existing Hatchet `Workflow` object. This is useful for multi-step pipelines or complex DAGs that go beyond a single function. See [Workflow & Single-Run Experiments](../guides/workflow-experiments.md) for details.
 
 ## 3. Generate Specs
 
@@ -45,23 +52,27 @@ The `experiment_id` and `sort_index` fields are inherited from the base class. Y
 Calling `BaseExperiment.allocate()` performs the following steps:
 
 1. **Resolve version** -- Based on the versioning strategy (`bumpmajor`, `bumpminor`, `bumppatch`, `keep`) and the latest version found in S3.
-2. **Validate specs** -- Checks that all specs match the expected input type for the registered experiment.
+2. **Validate specs** -- Checks that all specs match the expected input type for the registered runnable.
 3. **Overwrite metadata** -- Sets `experiment_id` and `sort_index` on each spec.
 4. **Upload input artifacts** -- Finds all local `Path` values in `FileReference` fields, uploads them to S3, and rewrites the references as `S3Url` values.
 5. **Serialize specs** -- Writes all specs to a `specs.pq` Parquet file in S3.
-6. **Trigger scatter/gather** -- Creates a `ScatterGatherInput` and triggers the scatter/gather workflow on Hatchet.
+6. **Trigger execution** -- The behavior depends on how specs are passed:
+   - **Batch (Sequence of specs)**: Creates a `ScatterGatherInput` and triggers the scatter/gather workflow on Hatchet.
+   - **Single spec (one-off run)**: Triggers the runnable directly on Hatchet, bypassing scatter/gather entirely. A `workflow_spec.yml` is also uploaded. This works with both `Standalone` and `Workflow` runnables.
 7. **Write metadata** -- Uploads `manifest.yml`, `experiment_io_spec.yml`, and `input_artifacts.yml` to the experiment run directory.
 
-The return value is a tuple of `(ExperimentRun, TaskRunRef)`, where the `TaskRunRef` can be used to wait for the result.
+The return value is a tuple of `(ExperimentRun, ref)`, where `ref` is a `TaskRunRef` (for batch scatter/gather runs) or a `WorkflowRunRef` (for single-spec runs). Both can be used to wait for the result.
 
-## 5. Scatter/Gather
+## 5. Scatter/Gather or Direct Execution
 
-The scatter/gather workflow receives the full spec URI and recursion configuration. At each node:
+**For batch allocations (list of specs):** The scatter/gather workflow receives the full spec URI and recursion configuration. At each node:
 
 - **If base case** (few enough specs or max depth reached): dispatch individual experiment tasks via `run_many` and collect results.
 - **Otherwise**: split specs using grid-stride, serialize sub-batches to S3, and spawn child scatter/gather workflows.
 
 See [Scatter/Gather](scatter-gather.md) for details on the recursive tree structure.
+
+**For single-spec allocations (one-off runs):** The runnable is triggered directly on Hatchet. Scatter/gather is bypassed entirely. This works with both `Standalone` tasks and multi-step `Workflow` pipelines. See [Workflow & Single-Run Experiments](../guides/workflow-experiments.md) for details.
 
 ## 6. Execute Tasks
 
@@ -100,7 +111,7 @@ You can retrieve results programmatically:
 ```python
 from scythe.experiments import BaseExperiment
 
-experiment = BaseExperiment(experiment=my_experiment_fn)
+experiment = BaseExperiment(runnable=my_experiment_fn)
 
 # List all versions
 versions = experiment.list_versions()
