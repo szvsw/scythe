@@ -142,6 +142,9 @@ class ExperimentIndexAdditionalDataOverlapsWithSpecError(Exception):
         )
 
 
+ComputedFeatureValue = int | float | str
+
+
 # TODO: consider making the payload a generic?
 class ExperimentInputSpec(BaseSpec):
     """A spec for running a leaf workflow."""
@@ -157,6 +160,15 @@ class ExperimentInputSpec(BaseSpec):
         default=None, description="The storage settings to use."
     )
     _original_spec: "Self | None" = None
+
+    @property
+    def computed_features(self) -> dict[str, ComputedFeatureValue]:
+        """Scalar features merged into :meth:`make_multiindex` for combined result frames.
+
+        Override in subclasses to attach derived index levels (e.g. labels from other
+        fields). Keys must not overlap Pydantic fields included in the index dump.
+        """
+        return {}
 
     @property
     def prefix(self) -> str:
@@ -186,7 +198,7 @@ class ExperimentInputSpec(BaseSpec):
 
         return additional_excludes.union({"storage_settings", "_original_spec"})
 
-    def make_multiindex(
+    def make_multiindex(  # noqa: C901
         self,
         additional_index_data: dict[str, Any] | list[dict[str, Any]] | None = None,
         n_rows: int = 1,
@@ -215,15 +227,26 @@ class ExperimentInputSpec(BaseSpec):
             exclude=instance_to_dump._index_excluded_fields.union(additional_excludes),
         )
         index_data: list[dict[str, Any]] = [dumped_index for _ in range(n_rows)]
+        index_keys_so_far: set[str] = set(dumped_index)
+
+        cf = self.computed_features
+        if cf:
+            overlapping_cf = [k for k in cf if k in index_keys_so_far]
+            if overlapping_cf:
+                raise ExperimentIndexAdditionalDataOverlapsWithSpecError(overlapping_cf)
+            index_keys_so_far.update(cf)
+            for d in index_data:
+                d.update(cf)
 
         if isinstance(additional_index_data, dict):
-            if any(k in dumped_index for k in additional_index_data):
-                overlapping_keys = [
-                    k for k in additional_index_data if k in dumped_index
-                ]
+            overlapping_keys = [
+                k for k in additional_index_data if k in index_keys_so_far
+            ]
+            if overlapping_keys:
                 raise ExperimentIndexAdditionalDataOverlapsWithSpecError(
                     overlapping_keys
                 )
+            index_keys_so_far.update(additional_index_data)
             for d in index_data:
                 d.update(additional_index_data)
 
