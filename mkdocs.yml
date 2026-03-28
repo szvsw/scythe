@@ -1,7 +1,7 @@
 site_name: Scythe
 repo_url: https://github.com/szvsw/scythe
 site_url: https://szvsw.github.io/scythe
-site_description: This is a repository for managing embarassingly parallel experiments with Hatchet.
+site_description: A lightweight library for running embarrassingly parallel experiments with Hatchet.
 site_author: Sam Wolk
 edit_uri: edit/main/docs/
 repo_name: szvsw/scythe
@@ -9,6 +9,24 @@ copyright: Maintained by <a href="https://github.com/szvsw">Sam Wolk</a>.
 
 nav:
   - Home: index.md
+  - Getting Started:
+      - Installation: getting-started/installation.md
+      - Quickstart: getting-started/quickstart.md
+  - Concepts:
+      - Architecture: concepts/architecture.md
+      - Scatter/Gather: concepts/scatter-gather.md
+      - Experiment Lifecycle: concepts/experiment-lifecycle.md
+  - Guides:
+      - Defining Experiments: guides/defining-experiments.md
+      - Running Experiments: guides/running-experiments.md
+      - Workers: guides/workers.md
+      - Retrieving Results: guides/retrieving-results.md
+  - Deployment:
+      - Local Development: deployment/local.md
+      - Cloud (AWS): deployment/cloud.md
+  - Reference:
+      - Configuration: reference/configuration.md
+      - API Reference: reference/api.md
   - Blog:
       - Building Scythe: blog/building-scythe.md
 
@@ -22,14 +40,18 @@ plugins:
             - sys.path.append('../')
           options:
             show_source: false
+            show_root_heading: true
+            show_root_full_path: false
+            heading_level: 3
+            members_order: source
+
 theme:
   name: material
   feature:
     tabs: true
   features:
     - content.code.annotate
-    # - toc.follow
-    # - toc.integrate
+    - content.code.copy
     - navigation.top
     - navigation.path
     - navigation.indexes
@@ -66,6 +88,8 @@ extra:
 markdown_extensions:
   - toc:
       permalink: "#"
+  - admonition
+  - pymdownx.details
   - pymdownx.arithmatex:
       generic: true
   - pymdownx.highlight:
@@ -74,5 +98,13 @@ markdown_extensions:
       pygments_lang_class: true
   - pymdownx.inlinehilite
   - pymdownx.snippets
-  - pymdownx.superfences
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
   - tables
+  - attr_list
+  - md_in_html

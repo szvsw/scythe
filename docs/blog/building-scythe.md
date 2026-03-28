@@ -1265,6 +1265,16 @@ export default $config({
 
     // Optionally use an existing bucket
     // if `EXISTING_BUCKET` is set
+    sst.Linkable.wrap(aws.s3.BucketV2, (bucket) => ({
+      properties: { name: bucket.bucket },
+      include: [
+        sst.aws.permission({
+          actions: ["s3:*"],
+          resources: [bucket.arn, $interpolate`${bucket.arn}/*`],
+        }),
+      ],
+    }));
+
     const bucket = process.env.EXISTING_BUCKET
       ? aws.s3.BucketV2.get("Storage", process.env.EXISTING_BUCKET)
       : new sst.aws.Bucket("Storage");
