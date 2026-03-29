@@ -69,14 +69,6 @@ class BaseSpec(FileReferenceMixin, extra="allow", arbitrary_types_allowed=True):
             path = path[1:]
         return local_artifacts_dir / self.experiment_id / path
 
-    def log(self, msg: str):
-        """Log a message to the context or to the logger.
-
-        Args:
-            msg (str): The message to log
-        """
-        logger.info(msg)
-
     def fetch_uri(self, uri: AnyUrl, use_cache: bool = True) -> Path:
         """Fetch a file from a uri and return the local path.
 
@@ -88,7 +80,7 @@ class BaseSpec(FileReferenceMixin, extra="allow", arbitrary_types_allowed=True):
             local_path (Path): The local path of the fetched file
         """
         local_path = self.local_path(uri)
-        return fetch_uri(uri, local_path, use_cache, self.log)
+        return fetch_uri(uri, local_path, use_cache)
 
     def _fetch_remote_files_to_cache(self) -> dict[str, Path]:
         """Fetch remote files to cache."""
@@ -262,7 +254,7 @@ class ExperimentInputSpec(BaseSpec):
         try:
             json.dumps(index_data)
         except Exception as e:
-            self.log(f"Index data is not serializable: {index_data}")
+            logger.warning("Index data is not serializable: %s", index_data)
             raise ExperimentIndexNotSerializableError(self.__class__) from e
 
         df = pd.DataFrame(index_data)
@@ -380,7 +372,7 @@ class ExperimentOutputSpec(FileReferenceMixin, arbitrary_types_allowed=True):
         # but for additional files, we probably would want to do
         # additional_files/workflow_run_id/{path.name}
         if storage_settings is None:
-            input_spec.log("No storage settings provided, skipping file transfer.")
+            logger.info("No storage settings provided, skipping file transfer.")
             return
         local_output_artifact_paths = self._local_artifact_file_paths
         non_local_output_artifact_uris = self.remote_artifact_file_paths
@@ -431,7 +423,7 @@ class ExperimentOutputSpec(FileReferenceMixin, arbitrary_types_allowed=True):
     ):
         """Transfer the dataframes to the output spec."""
         if storage_settings is None:
-            input_spec.log("No storage settings provided, skipping dataframe transfer.")
+            logger.info("No storage settings provided, skipping dataframe transfer.")
             return
 
         # First, we need to save each of the dataframes to a parquet file

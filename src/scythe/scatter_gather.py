@@ -1,7 +1,7 @@
 """Fanout Handling."""
 
+import logging
 import tempfile
-from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from functools import cached_property, partial
 from pathlib import Path
@@ -29,6 +29,8 @@ if TYPE_CHECKING:
     from mypy_boto3_s3.client import S3Client
 else:
     S3Client = object
+
+logger = logging.getLogger(__name__)
 
 
 class RecursionSpec(BaseModel):
@@ -276,9 +278,9 @@ class ScatterGatherInput(BaseSpec):
                 r: ScatterGatherResult,
             ) -> GatheredExperimentRuns | None:
                 try:
-                    return r.to_gathered_experiment_runs(logger=ctx.log)
-                except Exception as e:
-                    ctx.log(f"Error gathering experiment outputs: {e}")
+                    return r.to_gathered_experiment_runs()
+                except Exception:
+                    logger.exception("Error gathering experiment outputs")
                     return None
 
             with ThreadPoolExecutor(max_workers=8) as executor:
@@ -294,10 +296,7 @@ class ScatterGatherResult(BaseModel):
 
     uris: dict[str, S3Url]
 
-    def to_gathered_experiment_runs(
-        self,
-        logger: Callable[[str], None] | None = None,
-    ) -> GatheredExperimentRuns:
+    def to_gathered_experiment_runs(self) -> GatheredExperimentRuns:
         """Convert the scatter gather result to a gathered experiment runs."""
 
         def fetch_and_read_parquet(
@@ -317,9 +316,8 @@ class ScatterGatherResult(BaseModel):
 
         successful_results = [r for r in results if r[1] is not None]
         failed_results = [r[0] for r in results if r[1] is None]
-        if logger:
-            for k in failed_results:
-                logger(f"Failed to fetch {k} from {self.uris[k]}")
+        for k in failed_results:
+            logger.warning("Failed to fetch %s from %s", k, self.uris[k])
 
         dfs = dict(successful_results)
 
