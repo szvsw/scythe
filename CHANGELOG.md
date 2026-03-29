@@ -5,6 +5,40 @@ All notable changes to **scythe-engine** are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - Unreleased
+
+### Added
+
+- `log_interval()` utility in `scythe.utils` for computing dynamic periodic
+  logging intervals (at most 20 log calls per loop, never more frequent than
+  every 5 steps).
+- `tqdm` progress bars and periodic `logger.info` calls throughout allocation
+  and scatter/gather for better observability of long-running spec processing.
+  Affected areas: spec validation, metadata overwriting, file-reference
+  rewriting, spec serialization, experiment dispatch, result sifting, and
+  parquet upload.
+- Module-level loggers (`logging.getLogger(__name__)`) in `experiments.py` and
+  `scatter_gather.py`.
+
+### Changed
+
+- All logging now uses standard Python `logging` instead of Hatchet
+  `context.log()` or injectable logger callables. Hatchet automatically
+  captures stdlib log output in recent SDK versions, so the old bridging
+  mechanisms are no longer needed.
+
+### Removed
+
+- **BREAKING** `BaseSpec.log()` method. Use a module-level
+  `logger = logging.getLogger(__name__)` instead.
+- **BREAKING** `overwrite_log_method` parameter from
+  `ExperimentRegistry.Register()` and the `context.log` lambda bridge it
+  controlled.
+- **BREAKING** `logger_fn` parameter from `fetch_uri()`. The function now
+  logs directly via its module-level logger.
+- **BREAKING** `logger` parameter from
+  `ScatterGatherResult.to_gathered_experiment_runs()`.
+
 ## [1.2.0] - 2026-03-28
 
 ### Added
@@ -53,5 +87,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Deferred `hatchet` client import in `ScytheWorkerConfig.start()` to avoid
   import-time side effects.
 
-[1.2.0]: https://github.com/szvsw/scythe/compare/v1.1.0...HEAD
+[1.3.0]: https://github.com/szvsw/scythe/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/szvsw/scythe/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/szvsw/scythe/compare/v1.0.0...v1.1.0

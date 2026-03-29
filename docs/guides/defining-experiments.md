@@ -33,9 +33,23 @@ You do not need to set these when creating specs -- they are populated automatic
 
 ### Inherited Methods
 
-- `log(msg)` -- Log a message. During task execution, this is redirected to the Hatchet context logger so messages appear in the Hatchet dashboard.
 - `fetch_uri(uri, use_cache=True)` -- Fetch a file from S3, HTTP, or the local filesystem and return the local path. Results are cached by default.
 - `make_multiindex(n_rows=1, additional_index_data=None)` -- Construct a `pd.MultiIndex` from the spec fields (plus any `computed_features`), used for indexing output DataFrames.
+
+### Logging
+
+Scythe uses standard Python `logging` throughout. Recent versions of Hatchet automatically capture Python log output and forward it to the Hatchet dashboard, so no special logging setup is needed. Use a module-level logger in your experiment code:
+
+```python
+import logging
+
+logger = logging.getLogger(__name__)
+
+@ExperimentRegistry.Register()
+def my_simulation(input_spec: MyInput) -> MyOutput:
+    logger.info("Running simulation for %s", input_spec.material)
+    ...
+```
 
 ### Computed Features
 
@@ -187,7 +201,6 @@ The `Register` decorator accepts several options:
 | `desired_worker_labels`  | `None`                        | Worker affinity labels for routing                                                        |
 | `auto_fetch_files`       | `True`                        | Whether to automatically fetch remote files before calling your function                  |
 | `local_file_location`    | `"cache"`                     | Where to store fetched files: `"cache"` (shared) or `"copied-to-tempdir"` (per-task copy) |
-| `overwrite_log_method`   | `True`                        | Whether to redirect `input_spec.log()` to the Hatchet context logger                      |
 | `inject_workflow_run_id` | `True`                        | Whether to set `workflow_run_id` on the input spec                                        |
 
 ### Production Example
