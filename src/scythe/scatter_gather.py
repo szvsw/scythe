@@ -22,6 +22,7 @@ from scythe.registry import (
     TOutput,
 )
 from scythe.settings import ScytheStorageSettings, timeout_settings
+from scythe.utils import log_interval
 from scythe.utils.filesys import S3Url, fetch_uri
 from scythe.utils.results import save_and_upload_parquets, transpose_dataframe_dict
 from scythe.utils.s3 import s3_client as s3
@@ -151,10 +152,11 @@ class ScatterGatherInput(BaseSpec):
         n = len(specs_dicts)
         validator = self.standalone.input_validator_type
         logger.info("Validating %d specs from %s", n, self.specs_uri)
+        interval = log_interval(n)
         specs: list[ExperimentInputSpec] = []
         for i, spec_dict in enumerate(tqdm(specs_dicts, desc="Validating specs")):
             specs.append(validator.model_validate(spec_dict))
-            if (i + 1) % 1000 == 0:
+            if (i + 1) % interval == 0:
                 logger.info("Validated %d/%d specs", i + 1, n)
         logger.info("Finished validating %d specs", n)
         return specs

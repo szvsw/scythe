@@ -25,6 +25,7 @@ from scythe.scatter_gather import (
     scatter_gather,
 )
 from scythe.settings import ScytheStorageSettings
+from scythe.utils import log_interval
 from scythe.utils.filesys import S3Url
 from scythe.utils.results import save_and_upload_parquets
 from scythe.utils.s3 import s3_client as s3
@@ -461,6 +462,7 @@ class BaseExperiment(
                 )
             )
             logger.info("Rewriting spec file references to S3 URIs")
+            rewrite_interval = log_interval(len(spec_list))
             for i, spec in enumerate(
                 tqdm(spec_list, desc="Rewriting spec file references")
             ):
@@ -468,7 +470,7 @@ class BaseExperiment(
                     uri_map = input_artifacts_s3_url_maps[field_name]
                     uri = uri_map[fpath]
                     setattr(spec, field_name, uri)
-                if (i + 1) % 1000 == 0:
+                if (i + 1) % rewrite_interval == 0:
                     logger.info(
                         "Rewrote file references for %d/%d specs",
                         i + 1,
@@ -759,12 +761,13 @@ class ExperimentRun(BaseModel, Generic[TInput, TOutput]):
         """Overwrite the metadata for the specs."""
         n = len(specs)
         logger.info("Overwriting metadata for %d specs", n)
+        interval = log_interval(n)
         for i, spec in enumerate(tqdm(specs, desc="Overwriting spec metadata")):
             if overwrite_experiment_id:
                 spec.experiment_id = self.experiment_id
             if overwrite_sort_index:
                 spec.sort_index = i
-            if (i + 1) % 1000 == 0:
+            if (i + 1) % interval == 0:
                 logger.info("Overwrote metadata for %d/%d specs", i + 1, n)
 
     @property
