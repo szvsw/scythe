@@ -320,6 +320,10 @@ class ScatterGatherInput(BaseSpec):
             experiment_outputs = await asyncio.to_thread(
                 self.gather_outputs, safe_results
             )
+            logger.info(
+                "Finished gathering outputs from %d children scatter_gather tasks",
+                len(experiment_outputs),
+            )
         return experiment_outputs
 
     def gather_outputs(
@@ -336,7 +340,7 @@ class ScatterGatherInput(BaseSpec):
                 logger.exception("Error gathering experiment outputs")
                 return None
 
-        with ThreadPoolExecutor(max_workers=8) as executor:
+        with ThreadPoolExecutor(max_workers=2) as executor:
             experiment_outputs = list(executor.map(gather_experiment_outputs, results))
 
         experiment_outputs = [r for r in experiment_outputs if r is not None]
@@ -363,7 +367,7 @@ class ScatterGatherResult(BaseModel):
             except Exception:
                 return k, None
 
-        with ThreadPoolExecutor(max_workers=8) as executor:
+        with ThreadPoolExecutor(max_workers=2) as executor:
             results = list(executor.map(fetch_and_read_parquet, self.uris.items()))
 
         successful_results = [r for r in results if r[1] is not None]
