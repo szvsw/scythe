@@ -401,17 +401,18 @@ async def scatter_gather(
 
     logger.info("Combining %d experiment output groups", len(experiment_outputs))
     dfs = [r.success.dataframes for r in experiment_outputs]
-    errors = [r.errors for r in experiment_outputs if r.errors is not None]
+    # errors = [r.errors for r in experiment_outputs if r.errors is not None]
     transposed_dfs = transpose_dataframe_dict(dfs)
 
-    if errors:
-        error_dfs = pd.concat(errors, axis=0)
-        if "errors" in transposed_dfs:
-            transposed_dfs["errors"] = pd.concat(
-                [transposed_dfs["errors"], error_dfs], axis=0
-            )
-        else:
-            transposed_dfs["errors"] = error_dfs
+    # if errors:
+    #     logger.info("Combining %d error dataframes", len(errors))
+    #     error_dfs = pd.concat(errors, axis=0)
+    #     if "errors" in transposed_dfs:
+    #         transposed_dfs["errors"] = pd.concat(
+    #             [transposed_dfs["errors"], error_dfs], axis=0
+    #         )
+    #     else:
+    #         transposed_dfs["errors"] = error_dfs
 
     output_key_constructor = partial(
         payload.construct_filekey,
@@ -428,6 +429,7 @@ async def scatter_gather(
         output_key_constructor=output_key_constructor,
         save_errors=payload.save_errors,
     )
+    logger.info("Uploaded %d result parquets", len(uris))
 
     if payload.is_root:
         logger.info("Root node: uploading final result parquets")
