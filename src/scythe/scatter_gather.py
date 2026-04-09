@@ -1,5 +1,6 @@
 """Fanout Handling."""
 
+import asyncio
 import logging
 import tempfile
 from concurrent.futures import ThreadPoolExecutor
@@ -24,7 +25,10 @@ from scythe.registry import (
 from scythe.settings import ScytheStorageSettings, timeout_settings
 from scythe.utils import log_interval
 from scythe.utils.filesys import S3Url, fetch_uri
-from scythe.utils.results import save_and_upload_parquets, transpose_dataframe_dict
+from scythe.utils.results import (
+    save_and_upload_parquets_async,
+    transpose_dataframe_dict,
+)
 from scythe.utils.s3 import s3_client as s3
 
 if TYPE_CHECKING:
@@ -196,7 +200,7 @@ class ScatterGatherInput(BaseSpec):
             errors=error_df,
         )
 
-    def create_recursion_payloads(
+    async def create_recursion_payloads(
         self, parent_workflow_run_id: str
     ) -> tuple[list[WorkflowRunTriggerConfig], list["ScatterGatherInput"]]:
         """Splits up the specs into a list of children scatter gather payloads for recursion."""
@@ -225,7 +229,7 @@ class ScatterGatherInput(BaseSpec):
                 spec.model_dump(mode="json") for spec in specs_to_use
             ])
             filename = f"specs_{branch_ix:06d}"
-            uris = save_and_upload_parquets(
+            uris = await save_and_upload_parquets_async(
                 collected_dfs={
                     filename: specs_as_df,
                 },
@@ -303,24 +307,35 @@ class ScatterGatherInput(BaseSpec):
                 self.recursion_map.factor,
                 depth,
             )
-            trigs, children_specs = self.create_recursion_payloads(ctx.workflow_run_id)
+            trigs, children_specs = await self.create_recursion_payloads(
+                ctx.workflow_run_id
+            )
             results = await scatter_gather.aio_run_many(trigs, return_exceptions=True)
             safe_results, _error_df = sift_results(children_specs, results)
 
-            def gather_experiment_outputs(
-                r: ScatterGatherResult,
-            ) -> GatheredExperimentRuns | None:
-                try:
-                    return r.to_gathered_experiment_runs()
-                except Exception:
-                    logger.exception("Error gathering experiment outputs")
-                    return None
+            experiment_outputs = await asyncio.to_thread(
+                self.gather_outputs, safe_results
+            )
+        return experiment_outputs
 
-            with ThreadPoolExecutor(max_workers=8) as executor:
-                experiment_outputs = list(
-                    executor.map(gather_experiment_outputs, safe_results)
-                )
-            experiment_outputs = [r for r in experiment_outputs if r is not None]
+    def gather_outputs(
+        self, results: list["ScatterGatherResult"]
+    ) -> list[GatheredExperimentRuns]:
+        """Gather the experiment outputs from a list of scatter gather results."""
+
+        def gather_experiment_outputs(
+            r: ScatterGatherResult,
+        ) -> GatheredExperimentRuns | None:
+            try:
+                return r.to_gathered_experiment_runs()
+            except Exception:
+                logger.exception("Error gathering experiment outputs")
+                return None
+
+        with ThreadPoolExecutor(max_workers=8) as executor:
+            experiment_outputs = list(executor.map(gather_experiment_outputs, results))
+
+        experiment_outputs = [r for r in experiment_outputs if r is not None]
         return experiment_outputs
 
 
@@ -402,7 +417,7 @@ async def scatter_gather(
     )
 
     logger.info("Uploading %d result parquets", len(transposed_dfs))
-    uris = save_and_upload_parquets(
+    uris = await save_and_upload_parquets_async(
         collected_dfs=transposed_dfs,
         s3=s3,
         bucket=payload.storage_settings.BUCKET,
@@ -418,7 +433,7 @@ async def scatter_gather(
             workflow_run_id=ctx.workflow_run_id,
             suffix="pq",
         )
-        uris = save_and_upload_parquets(
+        uris = await save_and_upload_parquets_async(
             collected_dfs=transposed_dfs,
             s3=s3,
             bucket=payload.storage_settings.BUCKET,

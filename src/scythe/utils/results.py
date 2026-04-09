@@ -1,5 +1,6 @@
 """This module contains functions to postprocess and serialize results."""
 
+import asyncio
 import logging
 import tempfile
 from collections.abc import Callable
@@ -95,3 +96,21 @@ def save_and_upload_parquets(
             if (i + 1) % log_n == 0:
                 logger.info("Uploaded %s (%d rows)", key, len(df))
     return uris
+
+
+async def save_and_upload_parquets_async(
+    collected_dfs: dict[str, pd.DataFrame],
+    s3: S3Client,
+    bucket: str,
+    output_key_constructor: Callable[[str], str],
+    save_errors: bool = False,
+) -> dict[str, S3Url]:
+    """Save and upload results to s3 asynchronously."""
+    return await asyncio.to_thread(
+        save_and_upload_parquets,
+        collected_dfs,
+        s3,
+        bucket,
+        output_key_constructor,
+        save_errors,
+    )
