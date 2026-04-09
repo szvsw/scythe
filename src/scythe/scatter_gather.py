@@ -428,6 +428,7 @@ async def scatter_gather(
         bucket=payload.storage_settings.BUCKET,
         output_key_constructor=output_key_constructor,
         save_errors=payload.save_errors,
+        del_after_upload=not payload.is_root,
     )
     logger.info("Uploaded %d result parquets", len(uris))
 
@@ -444,6 +445,7 @@ async def scatter_gather(
             bucket=payload.storage_settings.BUCKET,
             output_key_constructor=output_key_constructor,
             save_errors=payload.save_errors,
+            del_after_upload=True,
         )
 
     return ScatterGatherResult(uris=uris)

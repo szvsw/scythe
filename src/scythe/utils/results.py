@@ -1,6 +1,7 @@
 """This module contains functions to postprocess and serialize results."""
 
 import asyncio
+import gc
 import logging
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
@@ -73,6 +74,7 @@ def save_and_upload_parquets(
     bucket: str,
     output_key_constructor: Callable[[str], str],
     save_errors: bool = False,
+    del_after_upload: bool = False,
 ) -> dict[str, S3Url]:
     """Save and upload results to s3."""
     logger.info(
@@ -90,6 +92,9 @@ def save_and_upload_parquets(
         uris[key] = S3Url(uri)
         if (i + 1) % log_n == 0:
             logger.info("Uploaded %s (%d rows)", key, len(df))
+        if del_after_upload:
+            del df
+            gc.collect()
     return uris
 
 
@@ -98,6 +103,7 @@ async def save_and_upload_parquets_async(
     bucket: str,
     output_key_constructor: Callable[[str], str],
     save_errors: bool = False,
+    del_after_upload: bool = False,
 ) -> dict[str, S3Url]:
     """Save and upload results to s3 asynchronously."""
     return await asyncio.to_thread(
@@ -106,4 +112,5 @@ async def save_and_upload_parquets_async(
         bucket,
         output_key_constructor,
         save_errors,
+        del_after_upload,
     )
