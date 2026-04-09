@@ -89,6 +89,8 @@ def save_and_upload_parquets(
     uris: dict[str, S3Url] = {}
     log_n = log_interval(len(collected_dfs))
     for i, (key, df) in enumerate(collected_dfs.items()):
+        if (i + 1) % log_n == 0:
+            logger.info("Uploading %s (%d rows)", key, len(df))
         output_key = output_key_constructor(key)
         if "error" in key.lower() and not save_errors:
             logger.info("Skipping error key %s (save_errors=False)", key)
