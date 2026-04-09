@@ -2,7 +2,6 @@
 
 import asyncio
 import logging
-import tempfile
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
@@ -71,7 +70,6 @@ def make_onerow_multiindex_from_dict(
 
 def save_and_upload_parquets(
     collected_dfs: dict[str, pd.DataFrame],
-    s3: S3Client,
     bucket: str,
     output_key_constructor: Callable[[str], str],
     save_errors: bool = False,
@@ -82,25 +80,21 @@ def save_and_upload_parquets(
     )
     uris: dict[str, S3Url] = {}
     log_n = log_interval(len(collected_dfs))
-    with tempfile.TemporaryDirectory() as tmpdir:
-        for i, (key, df) in enumerate(collected_dfs.items()):
-            output_key = output_key_constructor(key)
-            if "error" in key.lower() and not save_errors:
-                logger.info("Skipping error key %s (save_errors=False)", key)
-                continue
-            f = f"{tmpdir}/{key}.parquet"
-            df.to_parquet(f)
-            s3.upload_file(Bucket=bucket, Key=output_key, Filename=f)
-            uri = f"s3://{bucket}/{output_key}"
-            uris[key] = S3Url(uri)
-            if (i + 1) % log_n == 0:
-                logger.info("Uploaded %s (%d rows)", key, len(df))
+    for i, (key, df) in enumerate(collected_dfs.items()):
+        output_key = output_key_constructor(key)
+        if "error" in key.lower() and not save_errors:
+            logger.info("Skipping error key %s (save_errors=False)", key)
+            continue
+        uri = f"s3://{bucket}/{output_key}"
+        df.to_parquet(uri)
+        uris[key] = S3Url(uri)
+        if (i + 1) % log_n == 0:
+            logger.info("Uploaded %s (%d rows)", key, len(df))
     return uris
 
 
 async def save_and_upload_parquets_async(
     collected_dfs: dict[str, pd.DataFrame],
-    s3: S3Client,
     bucket: str,
     output_key_constructor: Callable[[str], str],
     save_errors: bool = False,
@@ -109,7 +103,6 @@ async def save_and_upload_parquets_async(
     return await asyncio.to_thread(
         save_and_upload_parquets,
         collected_dfs,
-        s3,
         bucket,
         output_key_constructor,
         save_errors,
