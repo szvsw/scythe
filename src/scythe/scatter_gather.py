@@ -23,6 +23,7 @@ from scythe.settings import ScytheStorageSettings, timeout_settings
 from scythe.utils import log_interval
 from scythe.utils.filesys import S3Url
 from scythe.utils.results import (
+    save_and_upload_parquets,
     save_and_upload_parquets_async,
     transpose_dataframe_dict,
 )
@@ -423,7 +424,7 @@ async def scatter_gather(
     )
 
     logger.info("Uploading %d result parquets", len(transposed_dfs))
-    uris = await save_and_upload_parquets_async(
+    uris = save_and_upload_parquets(
         collected_dfs=transposed_dfs,
         bucket=payload.storage_settings.BUCKET,
         output_key_constructor=output_key_constructor,
@@ -440,7 +441,7 @@ async def scatter_gather(
             workflow_run_id=ctx.workflow_run_id,
             suffix="pq",
         )
-        uris = await save_and_upload_parquets_async(
+        uris = save_and_upload_parquets(
             collected_dfs=transposed_dfs,
             bucket=payload.storage_settings.BUCKET,
             output_key_constructor=output_key_constructor,
