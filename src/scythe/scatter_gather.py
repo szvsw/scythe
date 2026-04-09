@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+from concurrent.futures import ThreadPoolExecutor
 from functools import cached_property, partial
 from typing import TYPE_CHECKING, Literal, TypeVar
 
@@ -339,9 +340,8 @@ class ScatterGatherInput(BaseSpec):
                 logger.exception("Error gathering experiment outputs")
                 return None
 
-        # with ThreadPoolExecutor(max_workers=2) as executor:
-        #     experiment_outputs = list(executor.map(gather_experiment_outputs, results))
-        experiment_outputs = [gather_experiment_outputs(r) for r in results]
+        with ThreadPoolExecutor(max_workers=8) as executor:
+            experiment_outputs = list(executor.map(gather_experiment_outputs, results))
 
         experiment_outputs = [r for r in experiment_outputs if r is not None]
         return experiment_outputs
@@ -359,17 +359,16 @@ class ScatterGatherResult(BaseModel):
             item: tuple[str, S3Url],
         ) -> tuple[str, pd.DataFrame] | tuple[str, None]:
             k, v = item
+            # Temporary hotfix for massive dataframe from GloBI
+            if "ConsecutiveExceedances" in k:
+                return k, None
             try:
-                # with tempfile.TemporaryDirectory() as tmpdir:
-                # f = Path(tmpdir) / "specs.parquet"
-                # res_path = fetch_uri(uri=v, local_path=f, use_cache=False)
                 return k, pd.read_parquet(str(v))
             except Exception:
                 return k, None
 
-        # with ThreadPoolExecutor(max_workers=2) as executor:
-        #     results = list(executor.map(fetch_and_read_parquet, self.uris.items()))
-        results = [fetch_and_read_parquet(item) for item in self.uris.items()]
+        with ThreadPoolExecutor(max_workers=8) as executor:
+            results = list(executor.map(fetch_and_read_parquet, self.uris.items()))
 
         successful_results = [r for r in results if r[1] is not None]
         failed_results = [r[0] for r in results if r[1] is None]
