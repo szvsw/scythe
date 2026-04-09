@@ -2,10 +2,7 @@
 
 import asyncio
 import logging
-import tempfile
-from concurrent.futures import ThreadPoolExecutor
 from functools import cached_property, partial
-from pathlib import Path
 from typing import TYPE_CHECKING, Literal, TypeVar
 
 import pandas as pd
@@ -24,12 +21,11 @@ from scythe.registry import (
 )
 from scythe.settings import ScytheStorageSettings, timeout_settings
 from scythe.utils import log_interval
-from scythe.utils.filesys import S3Url, fetch_uri
+from scythe.utils.filesys import S3Url
 from scythe.utils.results import (
     save_and_upload_parquets_async,
     transpose_dataframe_dict,
 )
-from scythe.utils.s3 import s3_client as s3
 
 if TYPE_CHECKING:
     from mypy_boto3_s3.client import S3Client
@@ -233,7 +229,6 @@ class ScatterGatherInput(BaseSpec):
                 collected_dfs={
                     filename: specs_as_df,
                 },
-                s3=s3,
                 bucket=self.storage_settings.BUCKET,
                 output_key_constructor=partial(
                     self.construct_filekey,
@@ -340,8 +335,9 @@ class ScatterGatherInput(BaseSpec):
                 logger.exception("Error gathering experiment outputs")
                 return None
 
-        with ThreadPoolExecutor(max_workers=2) as executor:
-            experiment_outputs = list(executor.map(gather_experiment_outputs, results))
+        # with ThreadPoolExecutor(max_workers=2) as executor:
+        #     experiment_outputs = list(executor.map(gather_experiment_outputs, results))
+        experiment_outputs = [gather_experiment_outputs(r) for r in results]
 
         experiment_outputs = [r for r in experiment_outputs if r is not None]
         return experiment_outputs
@@ -360,15 +356,16 @@ class ScatterGatherResult(BaseModel):
         ) -> tuple[str, pd.DataFrame] | tuple[str, None]:
             k, v = item
             try:
-                with tempfile.TemporaryDirectory() as tmpdir:
-                    f = Path(tmpdir) / "specs.parquet"
-                    res_path = fetch_uri(uri=v, local_path=f, use_cache=False)
-                    return k, pd.read_parquet(res_path)
+                # with tempfile.TemporaryDirectory() as tmpdir:
+                # f = Path(tmpdir) / "specs.parquet"
+                # res_path = fetch_uri(uri=v, local_path=f, use_cache=False)
+                return k, pd.read_parquet(str(v))
             except Exception:
                 return k, None
 
-        with ThreadPoolExecutor(max_workers=2) as executor:
-            results = list(executor.map(fetch_and_read_parquet, self.uris.items()))
+        # with ThreadPoolExecutor(max_workers=2) as executor:
+        #     results = list(executor.map(fetch_and_read_parquet, self.uris.items()))
+        results = [fetch_and_read_parquet(item) for item in self.uris.items()]
 
         successful_results = [r for r in results if r[1] is not None]
         failed_results = [r[0] for r in results if r[1] is None]
@@ -428,7 +425,6 @@ async def scatter_gather(
     logger.info("Uploading %d result parquets", len(transposed_dfs))
     uris = await save_and_upload_parquets_async(
         collected_dfs=transposed_dfs,
-        s3=s3,
         bucket=payload.storage_settings.BUCKET,
         output_key_constructor=output_key_constructor,
         save_errors=payload.save_errors,
@@ -445,7 +441,6 @@ async def scatter_gather(
         )
         uris = await save_and_upload_parquets_async(
             collected_dfs=transposed_dfs,
-            s3=s3,
             bucket=payload.storage_settings.BUCKET,
             output_key_constructor=output_key_constructor,
             save_errors=payload.save_errors,

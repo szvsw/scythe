@@ -492,7 +492,6 @@ class BaseExperiment(
 
         uris = save_and_upload_parquets(
             collected_dfs={df_name: df},
-            s3=s3_client,
             bucket=self.storage_settings.BUCKET,
             output_key_constructor=experiment_run.construct_specs_filekey,
         )
