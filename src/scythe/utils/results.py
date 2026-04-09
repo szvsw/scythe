@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any
 
 import pandas as pd
 
+from scythe.utils import log_interval
 from scythe.utils.filesys import S3Url
 
 if TYPE_CHECKING:
@@ -79,8 +80,9 @@ def save_and_upload_parquets(
         "Saving and uploading %d parquet files to s3://%s", len(collected_dfs), bucket
     )
     uris: dict[str, S3Url] = {}
+    log_n = log_interval(len(collected_dfs))
     with tempfile.TemporaryDirectory() as tmpdir:
-        for key, df in collected_dfs.items():
+        for i, (key, df) in enumerate(collected_dfs.items()):
             output_key = output_key_constructor(key)
             if "error" in key.lower() and not save_errors:
                 logger.info("Skipping error key %s (save_errors=False)", key)
@@ -90,5 +92,6 @@ def save_and_upload_parquets(
             s3.upload_file(Bucket=bucket, Key=output_key, Filename=f)
             uri = f"s3://{bucket}/{output_key}"
             uris[key] = S3Url(uri)
-            logger.info("Uploaded %s (%d rows)", key, len(df))
+            if (i + 1) % log_n == 0:
+                logger.info("Uploaded %s (%d rows)", key, len(df))
     return uris

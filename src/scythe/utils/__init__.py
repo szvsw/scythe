@@ -9,4 +9,4 @@ def log_interval(total: int, *, max_logs: int = 20, min_interval: int = 5) -> in
     Guarantees at most *max_logs* log calls and never logs more frequently
     than every *min_interval* steps.
     """
-    return max(min_interval, math.ceil(total / max_logs))
+    return max(min_interval, math.ceil(total / max_logs)) if total > max_logs else 1

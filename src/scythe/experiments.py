@@ -420,9 +420,14 @@ class BaseExperiment(
             return experiment_run.construct_artifact_key(field_name, pth.name)
 
         logger.info("Collecting local input artifacts from %d specs", len(spec_list))
+        # first, we need to get a record of the `field: FilePath` pairs
+        # for each set of specs
         local_input_artifact_paths = [
             spec._local_artifact_file_paths for spec in spec_list
         ]
+        # then, we transpose the list of dicts into a dict of sets
+        # this is so that we can deduplicate shared input artifacts
+        # grouped by the field they are used for.
         input_artifacts: dict[str, set[FilePath]] = {}
         at_least_one_input_artifact = False
         for spec_paths in local_input_artifact_paths:
@@ -463,6 +468,7 @@ class BaseExperiment(
             )
             logger.info("Rewriting spec file references to S3 URIs")
             rewrite_interval = log_interval(len(spec_list))
+            # and then we update the specs with the new s3 urls
             for i, spec in enumerate(
                 tqdm(spec_list, desc="Rewriting spec file references")
             ):
@@ -478,6 +484,7 @@ class BaseExperiment(
                     )
 
         logger.info("Serializing %d specs to parquet", len(spec_list))
+        # next, we save the specs to a parquet file and upload it to s3
         df = pd.DataFrame([
             s.model_dump(mode="json") for s in tqdm(spec_list, desc="Serializing specs")
         ])

@@ -186,6 +186,8 @@ class ScatterGatherInput(BaseSpec):
             for i, spec in enumerate(specs)
         ]
         logger.info("Dispatching %d experiments via aio_run_many", n)
+        # since we don't have a way to get the individual workflow run ids,
+        # we can't associate specific results (or errors) with specific results
         results = await self.standalone.aio_run_many(inputs, return_exceptions=True)
         safe_results, error_df = sift_results(specs, results)
         result = combine_experiment_outputs(safe_results)
