@@ -366,7 +366,11 @@ class ScatterGatherResult(BaseModel):
 
         # with ThreadPoolExecutor(max_workers=2) as executor:
         #     results = list(executor.map(fetch_and_read_parquet, self.uris.items()))
-        results = [fetch_and_read_parquet(item) for item in self.uris.items()]
+        results = [
+            fetch_and_read_parquet(item)
+            for item in self.uris.items()
+            if "ConsecutiveExceedances" not in item[0]
+        ]
 
         successful_results = [r for r in results if r[1] is not None]
         failed_results = [r[0] for r in results if r[1] is None]
