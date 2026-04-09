@@ -215,6 +215,7 @@ class ScatterGatherInput(BaseSpec):
             depth,
         )
         children_payloads: list[ScatterGatherInput] = []
+        log_n = log_interval(factor)
         for branch_ix in range(factor):
             new_path = self.recursion_map.path.copy() if self.recursion_map.path else []
             new_path.append(
@@ -241,6 +242,7 @@ class ScatterGatherInput(BaseSpec):
                     workflow_run_id=parent_workflow_run_id,
                     suffix="pq",
                 ),
+                log=((branch_ix + 1) % log_n) == 0,
             )
             payload = ScatterGatherInput(
                 experiment_id=self.experiment_id,

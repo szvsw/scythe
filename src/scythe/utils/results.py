@@ -73,6 +73,7 @@ def save_and_upload_parquets(
     bucket: str,
     output_key_constructor: Callable[[str], str],
     save_errors: bool = False,
+    log: bool = True,
 ) -> dict[str, S3Url]:
     """Save and upload results to s3."""
     logger.info(
@@ -81,7 +82,7 @@ def save_and_upload_parquets(
     uris: dict[str, S3Url] = {}
     log_n = log_interval(len(collected_dfs))
     for i, (key, df) in enumerate(collected_dfs.items()):
-        if (i + 1) % log_n == 0:
+        if (i + 1) % log_n == 0 and log:
             logger.info("Uploading %s (%d rows)", key, len(df))
         output_key = output_key_constructor(key)
         if "error" in key.lower() and not save_errors:
@@ -90,7 +91,7 @@ def save_and_upload_parquets(
         uri = f"s3://{bucket}/{output_key}"
         df.to_parquet(uri)
         uris[key] = S3Url(uri)
-        if (i + 1) % log_n == 0:
+        if (i + 1) % log_n == 0 and log:
             logger.info("Uploaded %s (%d rows)", key, len(df))
     return uris
 
@@ -100,6 +101,7 @@ async def save_and_upload_parquets_async(
     bucket: str,
     output_key_constructor: Callable[[str], str],
     save_errors: bool = False,
+    log: bool = True,
 ) -> dict[str, S3Url]:
     """Save and upload results to s3 asynchronously."""
     return await asyncio.to_thread(
@@ -108,4 +110,5 @@ async def save_and_upload_parquets_async(
         bucket,
         output_key_constructor,
         save_errors,
+        log,
     )
