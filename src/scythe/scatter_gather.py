@@ -1,10 +1,8 @@
 """Fanout Handling."""
 
+import asyncio
 import logging
-import tempfile
-from concurrent.futures import ThreadPoolExecutor
 from functools import cached_property, partial
-from pathlib import Path
 from typing import TYPE_CHECKING, Literal, TypeVar
 
 import pandas as pd
@@ -23,9 +21,12 @@ from scythe.registry import (
 )
 from scythe.settings import ScytheStorageSettings, timeout_settings
 from scythe.utils import log_interval
-from scythe.utils.filesys import S3Url, fetch_uri
-from scythe.utils.results import save_and_upload_parquets, transpose_dataframe_dict
-from scythe.utils.s3 import s3_client as s3
+from scythe.utils.filesys import S3Url
+from scythe.utils.results import (
+    save_and_upload_parquets,
+    save_and_upload_parquets_async,
+    transpose_dataframe_dict,
+)
 
 if TYPE_CHECKING:
     from mypy_boto3_s3.client import S3Client
@@ -189,14 +190,18 @@ class ScatterGatherInput(BaseSpec):
         # since we don't have a way to get the individual workflow run ids,
         # we can't associate specific results (or errors) with specific results
         results = await self.standalone.aio_run_many(inputs, return_exceptions=True)
+        logger.info("Finished running %d experiments", n)
         safe_results, error_df = sift_results(specs, results)
+        logger.info("Combining %d successful results", len(safe_results))
         result = combine_experiment_outputs(safe_results)
+        logger.info("Finished combining results")
+
         return GatheredExperimentRuns(
             success=result,
             errors=error_df,
         )
 
-    def create_recursion_payloads(
+    async def create_recursion_payloads(
         self, parent_workflow_run_id: str
     ) -> tuple[list[WorkflowRunTriggerConfig], list["ScatterGatherInput"]]:
         """Splits up the specs into a list of children scatter gather payloads for recursion."""
@@ -225,11 +230,10 @@ class ScatterGatherInput(BaseSpec):
                 spec.model_dump(mode="json") for spec in specs_to_use
             ])
             filename = f"specs_{branch_ix:06d}"
-            uris = save_and_upload_parquets(
+            uris = await save_and_upload_parquets_async(
                 collected_dfs={
                     filename: specs_as_df,
                 },
-                s3=s3,
                 bucket=self.storage_settings.BUCKET,
                 output_key_constructor=partial(
                     self.construct_filekey,
@@ -303,24 +307,44 @@ class ScatterGatherInput(BaseSpec):
                 self.recursion_map.factor,
                 depth,
             )
-            trigs, children_specs = self.create_recursion_payloads(ctx.workflow_run_id)
+            trigs, children_specs = await self.create_recursion_payloads(
+                ctx.workflow_run_id
+            )
             results = await scatter_gather.aio_run_many(trigs, return_exceptions=True)
             safe_results, _error_df = sift_results(children_specs, results)
 
-            def gather_experiment_outputs(
-                r: ScatterGatherResult,
-            ) -> GatheredExperimentRuns | None:
-                try:
-                    return r.to_gathered_experiment_runs()
-                except Exception:
-                    logger.exception("Error gathering experiment outputs")
-                    return None
+            logger.info(
+                "Beginning to gather outputs from %d children scatter_gather tasks",
+                len(safe_results),
+            )
+            experiment_outputs = await asyncio.to_thread(
+                self.gather_outputs, safe_results
+            )
+            logger.info(
+                "Finished gathering outputs from %d children scatter_gather tasks",
+                len(experiment_outputs),
+            )
+        return experiment_outputs
 
-            with ThreadPoolExecutor(max_workers=8) as executor:
-                experiment_outputs = list(
-                    executor.map(gather_experiment_outputs, safe_results)
-                )
-            experiment_outputs = [r for r in experiment_outputs if r is not None]
+    def gather_outputs(
+        self, results: list["ScatterGatherResult"]
+    ) -> list[GatheredExperimentRuns]:
+        """Gather the experiment outputs from a list of scatter gather results."""
+
+        def gather_experiment_outputs(
+            r: ScatterGatherResult,
+        ) -> GatheredExperimentRuns | None:
+            try:
+                return r.to_gathered_experiment_runs()
+            except Exception:
+                logger.exception("Error gathering experiment outputs")
+                return None
+
+        # with ThreadPoolExecutor(max_workers=2) as executor:
+        #     experiment_outputs = list(executor.map(gather_experiment_outputs, results))
+        experiment_outputs = [gather_experiment_outputs(r) for r in results]
+
+        experiment_outputs = [r for r in experiment_outputs if r is not None]
         return experiment_outputs
 
 
@@ -337,15 +361,20 @@ class ScatterGatherResult(BaseModel):
         ) -> tuple[str, pd.DataFrame] | tuple[str, None]:
             k, v = item
             try:
-                with tempfile.TemporaryDirectory() as tmpdir:
-                    f = Path(tmpdir) / "specs.parquet"
-                    res_path = fetch_uri(uri=v, local_path=f, use_cache=False)
-                    return k, pd.read_parquet(res_path)
+                # with tempfile.TemporaryDirectory() as tmpdir:
+                # f = Path(tmpdir) / "specs.parquet"
+                # res_path = fetch_uri(uri=v, local_path=f, use_cache=False)
+                return k, pd.read_parquet(str(v))
             except Exception:
                 return k, None
 
-        with ThreadPoolExecutor(max_workers=8) as executor:
-            results = list(executor.map(fetch_and_read_parquet, self.uris.items()))
+        # with ThreadPoolExecutor(max_workers=2) as executor:
+        #     results = list(executor.map(fetch_and_read_parquet, self.uris.items()))
+        results = [
+            fetch_and_read_parquet(item)
+            for item in self.uris.items()
+            if "ConsecutiveExceedances" not in item[0]
+        ]
 
         successful_results = [r for r in results if r[1] is not None]
         failed_results = [r[0] for r in results if r[1] is None]
@@ -382,17 +411,18 @@ async def scatter_gather(
 
     logger.info("Combining %d experiment output groups", len(experiment_outputs))
     dfs = [r.success.dataframes for r in experiment_outputs]
-    errors = [r.errors for r in experiment_outputs if r.errors is not None]
+    # errors = [r.errors for r in experiment_outputs if r.errors is not None]
     transposed_dfs = transpose_dataframe_dict(dfs)
 
-    if errors:
-        error_dfs = pd.concat(errors, axis=0)
-        if "errors" in transposed_dfs:
-            transposed_dfs["errors"] = pd.concat(
-                [transposed_dfs["errors"], error_dfs], axis=0
-            )
-        else:
-            transposed_dfs["errors"] = error_dfs
+    # if errors:
+    #     logger.info("Combining %d error dataframes", len(errors))
+    #     error_dfs = pd.concat(errors, axis=0)
+    #     if "errors" in transposed_dfs:
+    #         transposed_dfs["errors"] = pd.concat(
+    #             [transposed_dfs["errors"], error_dfs], axis=0
+    #         )
+    #     else:
+    #         transposed_dfs["errors"] = error_dfs
 
     output_key_constructor = partial(
         payload.construct_filekey,
@@ -404,11 +434,12 @@ async def scatter_gather(
     logger.info("Uploading %d result parquets", len(transposed_dfs))
     uris = save_and_upload_parquets(
         collected_dfs=transposed_dfs,
-        s3=s3,
         bucket=payload.storage_settings.BUCKET,
         output_key_constructor=output_key_constructor,
         save_errors=payload.save_errors,
+        del_after_upload=not payload.is_root,
     )
+    logger.info("Uploaded %d result parquets", len(uris))
 
     if payload.is_root:
         logger.info("Root node: uploading final result parquets")
@@ -420,10 +451,10 @@ async def scatter_gather(
         )
         uris = save_and_upload_parquets(
             collected_dfs=transposed_dfs,
-            s3=s3,
             bucket=payload.storage_settings.BUCKET,
             output_key_constructor=output_key_constructor,
             save_errors=payload.save_errors,
+            del_after_upload=True,
         )
 
     return ScatterGatherResult(uris=uris)

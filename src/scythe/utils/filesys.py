@@ -53,22 +53,22 @@ def fetch_uri(  # noqa: C901
             raise ValueError(f"S3URI:NO_BUCKET:{uri}")
         path = uri.path[1:]
         if not local_path.exists() or not use_cache:
-            logger.info("Downloading %s...", uri)
+            logger.debug("Downloading %s...", uri)
             local_path.parent.mkdir(parents=True, exist_ok=True)
             s3.download_file(bucket, path, str(local_path))
         else:
-            logger.info("File %s already exists, skipping download.", local_path)
+            logger.debug("File %s already exists, skipping download.", local_path)
     elif uri.scheme == "http" or uri.scheme == "https":
         if not local_path.exists() or not use_cache:
-            logger.info("Downloading %s...", uri)
+            logger.debug("Downloading %s...", uri)
             local_path.parent.mkdir(parents=True, exist_ok=True)
             with open(local_path, "wb") as f:
                 f.write(requests.get(str(uri), timeout=60).content)
         else:
-            logger.info("File %s already exists, skipping download.", local_path)
+            logger.debug("File %s already exists, skipping download.", local_path)
     elif uri.scheme == "file":
         if not local_path.exists() or not use_cache:
-            logger.info("Copying %s to %s...", uri, local_path)
+            logger.debug("Copying %s to %s...", uri, local_path)
             local_path.parent.mkdir(parents=True, exist_ok=True)
             if uri.path:
                 shutil.copy(uri.path, local_path.as_posix())
@@ -76,7 +76,7 @@ def fetch_uri(  # noqa: C901
                 msg = f"File URI:NO_PATH:{uri}"
                 raise ValueError(msg)
         else:
-            logger.info("File %s already exists, skipping copy.", local_path)
+            logger.debug("File %s already exists, skipping copy.", local_path)
     else:
         raise NotImplementedError(f"URI:SCHEME:{uri.scheme}")
     return local_path
