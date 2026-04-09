@@ -313,6 +313,10 @@ class ScatterGatherInput(BaseSpec):
             results = await scatter_gather.aio_run_many(trigs, return_exceptions=True)
             safe_results, _error_df = sift_results(children_specs, results)
 
+            logger.info(
+                "Beginning to gather outputs from %d children scatter_gather tasks",
+                len(safe_results),
+            )
             experiment_outputs = await asyncio.to_thread(
                 self.gather_outputs, safe_results
             )
