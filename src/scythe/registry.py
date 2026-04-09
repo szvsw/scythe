@@ -136,7 +136,6 @@ class ExperimentRegistry:
         schedule_timeout: Duration = timeout_settings.EXPERIMENT_SCHEDULE,
         execution_timeout: Duration = timeout_settings.EXPERIMENT_EXECUTION,
         retries: int = 1,
-        overwrite_log_method: bool = True,
         inject_workflow_run_id: bool = True,
         auto_fetch_files: bool = True,
         local_file_location: Literal["cache", "copied-to-tempdir"] = "cache",
@@ -180,8 +179,6 @@ class ExperimentRegistry:
             )
             def task(input_: input_type, context: Context) -> return_type:  # pyright: ignore [reportInvalidTypeForm]
                 """The task implementation."""
-                if overwrite_log_method:
-                    input_.log = lambda msg: context.log(msg)
                 if inject_workflow_run_id:
                     input_.workflow_run_id = context.workflow_run_id
 

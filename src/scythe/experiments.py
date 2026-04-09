@@ -1,5 +1,6 @@
 """Allocate an experiment to a workflow run."""
 
+import logging
 import tempfile
 import warnings
 from collections.abc import Callable, Sequence
@@ -24,6 +25,7 @@ from scythe.scatter_gather import (
     scatter_gather,
 )
 from scythe.settings import ScytheStorageSettings
+from scythe.utils import log_interval
 from scythe.utils.filesys import S3Url
 from scythe.utils.results import save_and_upload_parquets
 from scythe.utils.s3 import s3_client as s3
@@ -35,6 +37,8 @@ else:
     S3Client = object
     CommonPrefixTypeDef = object
     ObjectTypeDef = object
+
+logger = logging.getLogger(__name__)
 
 
 class ExperimentSpecsMismatchError(Exception):
@@ -382,8 +386,13 @@ class BaseExperiment(
         TaskRunRef[ScatterGatherInput, ScatterGatherResult] | WorkflowRunRef,
     ]:
         """Allocate an experiment to a workflow run."""
+        n_specs = len(specs) if isinstance(specs, Sequence) else 1
+        logger.info(
+            "Allocating %d spec(s) for experiment %s", n_specs, self.runnable.name
+        )
         s3_client = s3_client or s3
         version = self.resolve_next_version(version, s3_client)
+        logger.info("Resolved version: %s", version)
         self.check_spec_types(specs) if isinstance(
             specs, Sequence
         ) else self.check_spec_type(specs)
@@ -410,6 +419,7 @@ class BaseExperiment(
             # which loses any namespacing from ancestral directories.
             return experiment_run.construct_artifact_key(field_name, pth.name)
 
+        logger.info("Collecting local input artifacts from %d specs", len(spec_list))
         # first, we need to get a record of the `field: FilePath` pairs
         # for each set of specs
         local_input_artifact_paths = [
@@ -424,6 +434,13 @@ class BaseExperiment(
             for field_name, fpath in spec_paths.items():
                 input_artifacts.setdefault(field_name, set()).add(fpath)
                 at_least_one_input_artifact = True
+        if at_least_one_input_artifact:
+            n_unique = sum(len(v) for v in input_artifacts.values())
+            logger.info(
+                "Found %d unique input artifacts across %d fields",
+                n_unique,
+                len(input_artifacts),
+            )
 
         # next, we want to detect collisions where input artifacts
         # are used for the same field and have the same filename but live in different
@@ -449,15 +466,28 @@ class BaseExperiment(
                     construct_artifact_key,
                 )
             )
+            logger.info("Rewriting spec file references to S3 URIs")
+            rewrite_interval = log_interval(len(spec_list))
             # and then we update the specs with the new s3 urls
-            for spec in spec_list:
+            for i, spec in enumerate(
+                tqdm(spec_list, desc="Rewriting spec file references")
+            ):
                 for field_name, fpath in spec._local_artifact_file_paths.items():
                     uri_map = input_artifacts_s3_url_maps[field_name]
                     uri = uri_map[fpath]
                     setattr(spec, field_name, uri)
+                if (i + 1) % rewrite_interval == 0:
+                    logger.info(
+                        "Rewrote file references for %d/%d specs",
+                        i + 1,
+                        len(spec_list),
+                    )
 
+        logger.info("Serializing %d specs to parquet", len(spec_list))
         # next, we save the specs to a parquet file and upload it to s3
-        df = pd.DataFrame([s.model_dump(mode="json") for s in spec_list])
+        df = pd.DataFrame([
+            s.model_dump(mode="json") for s in tqdm(spec_list, desc="Serializing specs")
+        ])
         df_name = experiment_run.specs_filename
 
         uris = save_and_upload_parquets(
@@ -468,10 +498,12 @@ class BaseExperiment(
         )
         specs_uri = uris[df_name]
 
+        logger.info("Specs uploaded to %s", specs_uri)
         if isinstance(self.runnable, Workflow):
             if isinstance(specs, Sequence):
                 msg = "Workflows do not yet support batching."
                 raise TypeError(msg)
+            logger.info("Dispatching single workflow run")
             run_ref = self.runnable.run_no_wait(
                 specs,
                 options=TriggerWorkflowOptions(
@@ -482,8 +514,7 @@ class BaseExperiment(
                 ),
             )
         else:
-            # Now, we can finally allocate the experiment to a workflow run
-            # of the scatter/gather task
+            logger.info("Dispatching scatter/gather workflow for %d specs", n_specs)
             scatter_gather_input = ScatterGatherInput(
                 experiment_id=experiment_run.experiment_id,
                 task_name=self.runnable.name,
@@ -505,6 +536,7 @@ class BaseExperiment(
             )
 
         workflow_run_id = run_ref.workflow_run_id
+        logger.info("Workflow dispatched: run_id=%s", workflow_run_id)
 
         # Now, we can upload some various metadata
         # files to the run dir
@@ -585,6 +617,11 @@ class BaseExperiment(
                     Filename=workflow_spec_path.as_posix(),
                 )
 
+        logger.info(
+            "Allocation complete: experiment_id=%s, workflow_run_id=%s",
+            experiment_run.experiment_id,
+            workflow_run_id,
+        )
         return experiment_run, run_ref
 
 
@@ -729,11 +766,16 @@ class ExperimentRun(BaseModel, Generic[TInput, TOutput]):
         overwrite_sort_index: bool = True,
     ):
         """Overwrite the metadata for the specs."""
-        for i, spec in enumerate(specs):
+        n = len(specs)
+        logger.info("Overwriting metadata for %d specs", n)
+        interval = log_interval(n)
+        for i, spec in enumerate(tqdm(specs, desc="Overwriting spec metadata")):
             if overwrite_experiment_id:
                 spec.experiment_id = self.experiment_id
             if overwrite_sort_index:
                 spec.sort_index = i
+            if (i + 1) % interval == 0:
+                logger.info("Overwrote metadata for %d/%d specs", i + 1, n)
 
     @property
     def final_results_dirkey(self) -> str:

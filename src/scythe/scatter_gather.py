@@ -1,7 +1,7 @@
 """Fanout Handling."""
 
+import logging
 import tempfile
-from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from functools import cached_property, partial
 from pathlib import Path
@@ -12,6 +12,7 @@ from hatchet_sdk import Context, TriggerWorkflowOptions
 from hatchet_sdk.clients.admin import WorkflowRunTriggerConfig
 from hatchet_sdk.runnables.workflow import Workflow
 from pydantic import BaseModel, Field, field_validator, model_validator
+from tqdm import tqdm
 
 from scythe.base import BaseSpec, ExperimentInputSpec, ExperimentOutputSpec
 from scythe.hatchet import hatchet
@@ -21,6 +22,7 @@ from scythe.registry import (
     TOutput,
 )
 from scythe.settings import ScytheStorageSettings, timeout_settings
+from scythe.utils import log_interval
 from scythe.utils.filesys import S3Url, fetch_uri
 from scythe.utils.results import save_and_upload_parquets, transpose_dataframe_dict
 from scythe.utils.s3 import s3_client as s3
@@ -29,6 +31,8 @@ if TYPE_CHECKING:
     from mypy_boto3_s3.client import S3Client
 else:
     S3Client = object
+
+logger = logging.getLogger(__name__)
 
 
 class RecursionSpec(BaseModel):
@@ -145,8 +149,17 @@ class ScatterGatherInput(BaseSpec):
         local_path = self.fetch_uri(self.specs_uri, use_cache=True)
         df = pd.read_parquet(local_path)
         specs_dicts = df.to_dict(orient="records")
+        n = len(specs_dicts)
         validator = self.standalone.input_validator_type
-        return [validator.model_validate(spec) for spec in specs_dicts]
+        logger.info("Validating %d specs from %s", n, self.specs_uri)
+        interval = log_interval(n)
+        specs: list[ExperimentInputSpec] = []
+        for i, spec_dict in enumerate(tqdm(specs_dicts, desc="Validating specs")):
+            specs.append(validator.model_validate(spec_dict))
+            if (i + 1) % interval == 0:
+                logger.info("Validated %d/%d specs", i + 1, n)
+        logger.info("Finished validating %d specs", n)
+        return specs
 
     def add_root_workflow_run_id(self, root_workflow_run_id: str) -> None:
         """Add the root workflow run id to the specs."""
@@ -159,6 +172,8 @@ class ScatterGatherInput(BaseSpec):
     ) -> GatheredExperimentRuns:
         """Run the actual experiments and collect results."""
         specs = self.specs
+        n = len(specs)
+        logger.info("Preparing %d experiment inputs for %s", n, self.task_name)
         for spec in specs:
             spec.storage_settings = self.storage_settings
         inputs = [
@@ -170,6 +185,7 @@ class ScatterGatherInput(BaseSpec):
             )
             for i, spec in enumerate(specs)
         ]
+        logger.info("Dispatching %d experiments via aio_run_many", n)
         # since we don't have a way to get the individual workflow run ids,
         # we can't associate specific results (or errors) with specific results
         results = await self.standalone.aio_run_many(inputs, return_exceptions=True)
@@ -185,8 +201,16 @@ class ScatterGatherInput(BaseSpec):
     ) -> tuple[list[WorkflowRunTriggerConfig], list["ScatterGatherInput"]]:
         """Splits up the specs into a list of children scatter gather payloads for recursion."""
         specs = self.specs
+        factor = self.recursion_map.factor
+        depth = len(self.recursion_map.path or [])
+        logger.info(
+            "Creating %d recursion branches for %d specs (depth=%d)",
+            factor,
+            len(specs),
+            depth,
+        )
         children_payloads: list[ScatterGatherInput] = []
-        for branch_ix in range(self.recursion_map.factor):
+        for branch_ix in range(factor):
             new_path = self.recursion_map.path.copy() if self.recursion_map.path else []
             new_path.append(
                 RecursionSpec(factor=self.recursion_map.factor, offset=branch_ix)
@@ -262,12 +286,23 @@ class ScatterGatherInput(BaseSpec):
     ) -> list[GatheredExperimentRuns]:
         """Run the experiments if not a base case, otherwise recurse."""
         self.add_root_workflow_run_id(ctx.workflow_run_id)
+        n_specs = len(self.specs)
+        depth = len(self.recursion_map.path or [])
 
         if self.is_base_case:
+            logger.info(
+                "Base case: running %d experiments directly (depth=%d)", n_specs, depth
+            )
             experiment_output = await self.run_experiments()
             experiment_outputs = [experiment_output]
 
         else:
+            logger.info(
+                "Recursing: splitting %d specs into %d branches (depth=%d)",
+                n_specs,
+                self.recursion_map.factor,
+                depth,
+            )
             trigs, children_specs = self.create_recursion_payloads(ctx.workflow_run_id)
             results = await scatter_gather.aio_run_many(trigs, return_exceptions=True)
             safe_results, _error_df = sift_results(children_specs, results)
@@ -276,9 +311,9 @@ class ScatterGatherInput(BaseSpec):
                 r: ScatterGatherResult,
             ) -> GatheredExperimentRuns | None:
                 try:
-                    return r.to_gathered_experiment_runs(logger=ctx.log)
-                except Exception as e:
-                    ctx.log(f"Error gathering experiment outputs: {e}")
+                    return r.to_gathered_experiment_runs()
+                except Exception:
+                    logger.exception("Error gathering experiment outputs")
                     return None
 
             with ThreadPoolExecutor(max_workers=8) as executor:
@@ -294,10 +329,7 @@ class ScatterGatherResult(BaseModel):
 
     uris: dict[str, S3Url]
 
-    def to_gathered_experiment_runs(
-        self,
-        logger: Callable[[str], None] | None = None,
-    ) -> GatheredExperimentRuns:
+    def to_gathered_experiment_runs(self) -> GatheredExperimentRuns:
         """Convert the scatter gather result to a gathered experiment runs."""
 
         def fetch_and_read_parquet(
@@ -317,9 +349,8 @@ class ScatterGatherResult(BaseModel):
 
         successful_results = [r for r in results if r[1] is not None]
         failed_results = [r[0] for r in results if r[1] is None]
-        if logger:
-            for k in failed_results:
-                logger(f"Failed to fetch {k} from {self.uris[k]}")
+        for k in failed_results:
+            logger.warning("Failed to fetch %s from %s", k, self.uris[k])
 
         dfs = dict(successful_results)
 
@@ -342,8 +373,14 @@ async def scatter_gather(
     ctx: Context,
 ) -> ScatterGatherResult:
     """Run the scatter gather workflow."""
+    logger.info(
+        "Starting scatter_gather for %s (experiment_id=%s)",
+        payload.task_name,
+        payload.experiment_id,
+    )
     experiment_outputs = await payload.run_or_recurse(ctx)
 
+    logger.info("Combining %d experiment output groups", len(experiment_outputs))
     dfs = [r.success.dataframes for r in experiment_outputs]
     errors = [r.errors for r in experiment_outputs if r.errors is not None]
     transposed_dfs = transpose_dataframe_dict(dfs)
@@ -364,6 +401,7 @@ async def scatter_gather(
         suffix="pq",
     )
 
+    logger.info("Uploading %d result parquets", len(transposed_dfs))
     uris = save_and_upload_parquets(
         collected_dfs=transposed_dfs,
         s3=s3,
@@ -373,6 +411,7 @@ async def scatter_gather(
     )
 
     if payload.is_root:
+        logger.info("Root node: uploading final result parquets")
         output_key_constructor = partial(
             payload.construct_filekey,
             mode="final",
@@ -414,6 +453,10 @@ def sift_results(
     error_specs = [
         spec_data[i] for i, r in enumerate(results) if isinstance(r, BaseException)
     ]
+    n_total = len(results)
+    n_ok = len(safe_results)
+    n_err = len(error_specs)
+    logger.info("Sifted %d results: %d succeeded, %d failed", n_total, n_ok, n_err)
 
     if error_specs and make_error_specs:
         error_msgs = [str(r) for r in results if isinstance(r, BaseException)]

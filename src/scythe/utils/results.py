@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any
 
 import pandas as pd
 
+from scythe.utils import log_interval
 from scythe.utils.filesys import S3Url
 
 if TYPE_CHECKING:
@@ -34,6 +35,11 @@ def transpose_dataframe_dict(
 ) -> dict[str, pd.DataFrame]:
     """Transpose a list of dictionaries of dataframes into a dictionary of combined dataframes."""
     all_keys = {key for df_dict in dataframe_results for key in df_dict}
+    logger.info(
+        "Transposing %d result groups across %d keys",
+        len(dataframe_results),
+        len(all_keys),
+    )
     return {
         key: pd.concat(
             [df_dict[key] for df_dict in dataframe_results if key in df_dict], axis=0
@@ -70,15 +76,22 @@ def save_and_upload_parquets(
     save_errors: bool = False,
 ) -> dict[str, S3Url]:
     """Save and upload results to s3."""
+    logger.info(
+        "Saving and uploading %d parquet files to s3://%s", len(collected_dfs), bucket
+    )
     uris: dict[str, S3Url] = {}
+    log_n = log_interval(len(collected_dfs))
     with tempfile.TemporaryDirectory() as tmpdir:
-        for key, df in collected_dfs.items():
+        for i, (key, df) in enumerate(collected_dfs.items()):
             output_key = output_key_constructor(key)
             if "error" in key.lower() and not save_errors:
+                logger.info("Skipping error key %s (save_errors=False)", key)
                 continue
             f = f"{tmpdir}/{key}.parquet"
             df.to_parquet(f)
             s3.upload_file(Bucket=bucket, Key=output_key, Filename=f)
             uri = f"s3://{bucket}/{output_key}"
             uris[key] = S3Url(uri)
+            if (i + 1) % log_n == 0:
+                logger.info("Uploaded %s (%d rows)", key, len(df))
     return uris
