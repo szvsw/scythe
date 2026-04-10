@@ -297,6 +297,7 @@ class ExperimentOutputSpec(FileReferenceMixin, arbitrary_types_allowed=True):
 
     @field_validator("dataframes", mode="before")
     def validate_dataframes(cls, v):
+        # TODO: this is at risk of blocking the main thread for a long time if there are a lot of dataframes.
         """Validate the dataframes via deserialization."""
 
         def handle_dict(v: dict):
