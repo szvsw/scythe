@@ -24,7 +24,7 @@ from scythe.settings import ScytheStorageSettings, timeout_settings
 from scythe.utils import log_interval
 from scythe.utils.filesys import S3Url
 from scythe.utils.results import (
-    save_and_upload_parquets_async,
+    save_and_upload_parquets,
     transpose_dataframe_dict,
 )
 
@@ -145,7 +145,7 @@ class ScatterGatherInput(BaseSpec):
         return runnable
 
     @cached_property
-    def specs(self) -> list[ExperimentInputSpec]:
+    def validated_specs(self) -> list[ExperimentInputSpec]:
         """Fetch the specs and convert to the input type."""
         local_path = self.fetch_uri(self.specs_uri, use_cache=True)
         df = pd.read_parquet(local_path)
@@ -162,38 +162,65 @@ class ScatterGatherInput(BaseSpec):
         logger.info("Finished validating %d specs", n)
         return specs
 
+    def _specs(self) -> list[ExperimentInputSpec]:
+        """A wrapper around the cached property to allow for non-blocking access via asyncio.to_thread."""
+        return self.validated_specs
+
+    @property
+    async def specs(self) -> list[ExperimentInputSpec]:
+        """Fetch the specs and convert to the input type in a non-blocking way."""
+        return await asyncio.to_thread(self._specs)
+
     def add_root_workflow_run_id(self, root_workflow_run_id: str) -> None:
         """Add the root workflow run id to the specs."""
         if self.recursion_map.is_root:
-            for spec in self.specs:
+            for spec in self.validated_specs:
                 spec.root_workflow_run_id = root_workflow_run_id
+
+    def create_bulk_run_experiment_specs(
+        self, specs: list[ExperimentInputSpec]
+    ) -> tuple[list[WorkflowRunTriggerConfig], list[ExperimentInputSpec]]:
+        """Create bulk run item configs for a list of experiment specs."""
+        log_n = log_interval(len(specs))
+        inputs: list[WorkflowRunTriggerConfig] = []
+        for i, spec in tqdm(
+            enumerate(specs), desc="Converting specs to bulk run item configs"
+        ):
+            spec.storage_settings = self.storage_settings
+            inp = self.standalone.create_bulk_run_item(
+                input=spec,
+                options=TriggerWorkflowOptions(
+                    additional_metadata={"index": i, "sort_index": spec.sort_index},
+                ),
+            )
+            inputs.append(inp)
+            if (i + 1) % log_n == 0:
+                logger.info(
+                    "Converted %d/%d specs to bulk run item configs", i + 1, len(specs)
+                )
+
+        return inputs, specs
 
     async def run_experiments(
         self,
     ) -> GatheredExperimentRuns:
         """Run the actual experiments and collect results."""
-        specs = self.specs
+        specs = await self.specs
         n = len(specs)
         logger.info("Preparing %d experiment inputs for %s", n, self.task_name)
-        for spec in specs:
-            spec.storage_settings = self.storage_settings
-        inputs = [
-            self.standalone.create_bulk_run_item(
-                input=spec,
-                options=TriggerWorkflowOptions(
-                    additional_metadata={"index": i},
-                ),
-            )
-            for i, spec in enumerate(specs)
-        ]
+
+        inputs, specs = await asyncio.to_thread(
+            self.create_bulk_run_experiment_specs, specs
+        )
+
         logger.info("Dispatching %d experiments via aio_run_many", n)
         # since we don't have a way to get the individual workflow run ids,
         # we can't associate specific results (or errors) with specific results
         results = await self.standalone.aio_run_many(inputs, return_exceptions=True)
         logger.info("Finished running %d experiments", n)
-        safe_results, error_df = sift_results(specs, results)
+        safe_results, error_df = await asyncio.to_thread(sift_results, specs, results)
         logger.info("Combining %d successful results", len(safe_results))
-        result = combine_experiment_outputs(safe_results)
+        result = await asyncio.to_thread(combine_experiment_outputs, safe_results)
         logger.info("Finished combining results")
 
         return GatheredExperimentRuns(
@@ -205,7 +232,7 @@ class ScatterGatherInput(BaseSpec):
         self, parent_workflow_run_id: str
     ) -> tuple[list[WorkflowRunTriggerConfig], list["ScatterGatherInput"]]:
         """Splits up the specs into a list of children scatter gather payloads for recursion."""
-        specs = self.specs
+        specs = await self.specs
         factor = self.recursion_map.factor
         depth = len(self.recursion_map.path or [])
         logger.info(
@@ -231,7 +258,8 @@ class ScatterGatherInput(BaseSpec):
                 spec.model_dump(mode="json") for spec in specs_to_use
             ])
             filename = f"specs_{branch_ix:06d}"
-            uris = await save_and_upload_parquets_async(
+            uris = await asyncio.to_thread(
+                save_and_upload_parquets,
                 collected_dfs={
                     filename: specs_as_df,
                 },
@@ -278,7 +306,7 @@ class ScatterGatherInput(BaseSpec):
     @property
     def is_base_case(self) -> bool:
         """Check if the current payload is a base case, i.e. no recursion needed."""
-        too_few_specs = len(self.specs) <= self.recursion_map.factor
+        too_few_specs = len(self.validated_specs) <= self.recursion_map.factor
         past_max_depth = (
             (len(self.recursion_map.path) >= self.recursion_map.max_depth)
             if self.recursion_map.path
@@ -292,7 +320,7 @@ class ScatterGatherInput(BaseSpec):
     ) -> list[GatheredExperimentRuns]:
         """Run the experiments if not a base case, otherwise recurse."""
         self.add_root_workflow_run_id(ctx.workflow_run_id)
-        n_specs = len(self.specs)
+        n_specs = len(await self.specs)
         depth = len(self.recursion_map.path or [])
 
         if self.is_base_case:
@@ -407,18 +435,20 @@ async def scatter_gather(
 
     logger.info("Combining %d experiment output groups", len(experiment_outputs))
     dfs = [r.success.dataframes for r in experiment_outputs]
-    # errors = [r.errors for r in experiment_outputs if r.errors is not None]
-    transposed_dfs = transpose_dataframe_dict(dfs)
+    errors = [r.errors for r in experiment_outputs if r.errors is not None]
+    transposed_dfs = await asyncio.to_thread(transpose_dataframe_dict, dfs)
 
-    # if errors:
-    #     logger.info("Combining %d error dataframes", len(errors))
-    #     error_dfs = pd.concat(errors, axis=0)
-    #     if "errors" in transposed_dfs:
-    #         transposed_dfs["errors"] = pd.concat(
-    #             [transposed_dfs["errors"], error_dfs], axis=0
-    #         )
-    #     else:
-    #         transposed_dfs["errors"] = error_dfs
+    if errors:
+        logger.info("Combining %d error dataframes", len(errors))
+        error_dfs = await asyncio.to_thread(pd.concat, errors, axis=0)
+        if "errors" in transposed_dfs:
+            transposed_dfs["errors"] = await asyncio.to_thread(
+                pd.concat, [transposed_dfs["errors"], error_dfs], axis=0
+            )
+        else:
+            transposed_dfs["errors"] = await asyncio.to_thread(
+                pd.concat, [error_dfs], axis=0
+            )
 
     output_key_constructor = partial(
         payload.construct_filekey,
@@ -428,7 +458,8 @@ async def scatter_gather(
     )
 
     logger.info("Uploading %d result parquets", len(transposed_dfs))
-    uris = await save_and_upload_parquets_async(
+    uris = await asyncio.to_thread(
+        save_and_upload_parquets,
         collected_dfs=transposed_dfs,
         bucket=payload.storage_settings.BUCKET,
         output_key_constructor=output_key_constructor,
@@ -444,7 +475,8 @@ async def scatter_gather(
             workflow_run_id=ctx.workflow_run_id,
             suffix="pq",
         )
-        uris = await save_and_upload_parquets_async(
+        uris = await asyncio.to_thread(
+            save_and_upload_parquets,
             collected_dfs=transposed_dfs,
             bucket=payload.storage_settings.BUCKET,
             output_key_constructor=output_key_constructor,
