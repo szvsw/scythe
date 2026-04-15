@@ -1230,8 +1230,8 @@
 <h1 id="scattergather">Scatter/Gather<a class="headerlink" href="#scattergather" title="Permanent link">#</a></h1>
 <div class="admonition note">
 <p class="admonition-title">Note</p>
-</div>
 <p>Scatter/gather is the execution path for <strong>batch allocations</strong> (a list of specs) only. When you pass a single spec to <code>allocate()</code>, the runnable is triggered directly on Hatchet and scatter/gather is bypassed. See <a href="../../guides/workflow-experiments/">Workflow &amp; Single-Run Experiments</a> for that path.</p>
+</div>
 <p>Scythe uses a recursive scatter/gather pattern to parallelize both the dispatch and collection of experiment tasks. This allows it to scale from tens to millions of simulations without bottlenecking on a single node.</p>
 <h2 id="the-problem">The Problem<a class="headerlink" href="#the-problem" title="Permanent link">#</a></h2>
 <p>When running a large experiment (e.g. 1,000,000 simulations), a naive approach would have a single orchestrator enqueue all tasks sequentially and then wait for all results. This creates two bottlenecks:</p>

@@ -1502,8 +1502,8 @@
 <p>Each DataFrame in <code>dataframes</code> is serialized to Parquet and uploaded to S3 individually per task. At the experiment level, all DataFrames with the same key are concatenated across tasks into a single Parquet file in the <code>final/</code> directory.</p>
 <div class="admonition note">
 <p class="admonition-title">Note</p>
-</div>
 <p>The keys <code>scalars</code> and <code>result_file_refs</code> are reserved and will raise an error if used in <code>dataframes</code>.</p>
+</div>
 <h2 id="filereference">FileReference<a class="headerlink" href="#filereference" title="Permanent link">#</a></h2>
 <p><code>FileReference</code> is a union type that accepts file paths from multiple sources:</p>
 <div class="language-python highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">scythe.utils.filesys</span><span class="w"> </span><span class="kn">import</span> <span class="n">FileReference</span>

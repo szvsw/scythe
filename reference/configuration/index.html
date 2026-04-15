@@ -1312,8 +1312,8 @@
 <p><code>Duration</code> values accept Hatchet duration strings like <code>"30s"</code>, <code>"5m"</code>, <code>"2h"</code>, <code>"1d"</code>, or Python <code>timedelta</code> objects.</p>
 <div class="admonition note">
 <p class="admonition-title">Note</p>
-</div>
 <p>The <code>EXPERIMENT_SCHEDULE</code> and <code>EXPERIMENT_EXECUTION</code> timeouts are defaults used by <code>@ExperimentRegistry.Register()</code>. You can override them per-experiment using the <code>schedule_timeout</code> and <code>execution_timeout</code> parameters of the decorator.</p>
+</div>
 <h3 id="timeout-guidance">Timeout Guidance<a class="headerlink" href="#timeout-guidance" title="Permanent link">#</a></h3>
 <ul>
 <li><strong>Schedule timeouts</strong> should be generous -- they cover the time a task waits in the queue. If workers are scaling up from zero, this can take minutes.</li>
