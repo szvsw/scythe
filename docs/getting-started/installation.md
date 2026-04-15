@@ -7,6 +7,9 @@
 - **A Hatchet instance** -- either [Hatchet Cloud](https://cloud.hatchet.run) or [self-hosted](https://docs.hatchet.run/self-hosting)
 - **AWS credentials** configured for S3 access (via environment variables, `~/.aws/credentials`, or IAM roles)
 
+!!! tip "Quick start with Docker"
+    The [scythe-example](https://github.com/szvsw/scythe-example) repository bundles a local Hatchet instance and S3-compatible storage (LocalStack) via Docker Compose, so you can skip the Hatchet and S3 prerequisites entirely for local development.
+
 ## Install Scythe
 
 === "uv (recommended)"

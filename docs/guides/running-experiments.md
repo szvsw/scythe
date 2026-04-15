@@ -136,24 +136,14 @@ run, ref = experiment.allocate(
 run, ref = experiment.allocate(
     specs,
     version="bumpminor",
-    recursion_map=RecursionMap(factor=10, max_depth=2),
+    recursion_map=RecursionMap(factor=100, max_depth=2),
 )
 ```
 
-When `recursion_map` is not specified, the default is `RecursionMap(factor=10, max_depth=0)` (no recursion).
+When `recursion_map` is not specified, the default is `RecursionMap(factor=10, max_depth=0)` (no recursion, factor ignored).
 
-For dynamic sizing based on payload, you can compute the recursion map programmatically:
-
-```python
-import math
-
-n_specs = len(specs)
-max_per_leaf = 100
-factor = min(10, n_specs)
-max_depth = max(0, math.ceil(math.log(n_specs / max_per_leaf, factor))) if n_specs > max_per_leaf else 0
-
-recursion_map = RecursionMap(factor=factor, max_depth=max_depth)
-```
+!!! tip "Prefer `max_depth=1` with a high branching factor"
+    [Benchmarks](https://github.com/szvsw/scythe-benchmark) show that the number of terminal nodes (`factor^max_depth`) is the dominant throughput driver. Using `max_depth=1` with a high factor (e.g. 32+) maximizes parallelism while keeping deadlock avoidance trivial (only one scatter/gather slot needed). Only increase `max_depth` if the branching factor would be so high that you would exceed Hatchet's enqueuing message limit at lower levels of the tree. See [Scatter/Gather Concepts](../concepts/scatter-gather.md#choosing-parameters) for details.
 
 ## Single-Spec Allocation
 

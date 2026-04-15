@@ -118,12 +118,15 @@ experiment = BaseExperiment(runnable=simulate_energy)
 run, ref = experiment.allocate(
     specs,
     version="bumpminor",  # (1)!
-    recursion_map=RecursionMap(factor=2, max_depth=2),  # (2)!
+    recursion_map=RecursionMap(factor=2, max_depth=1),  # (2)!
 )
 ```
 
 1. Auto-resolves the latest version in S3 and increments the minor version (e.g. `v1.2.0` becomes `v1.3.0`). Options: `bumpmajor`, `bumpminor`, `bumppatch`, `keep`.
-2. Controls the scatter/gather tree shape. `factor=2` means each node fans out to 2 children; `max_depth=2` limits the recursion depth.
+2. Controls the scatter/gather tree shape. `factor=2` means each node fans out to 2 children; `max_depth=1` limits the recursion depth.
+
+!!! note
+    For most workloads, `max_depth=1` with a higher branching factor (e.g. `factor=32`) is preferred over deeper trees. This maximizes parallel dispatch while simplifying deadlock avoidance. See [Scatter/Gather](../concepts/scatter-gather.md#choosing-parameters) for guidance.
 
 The `allocate` call:
 

@@ -68,10 +68,20 @@ A scatter/gather node reaches the base case and runs experiments directly when e
 
 ### Choosing Parameters
 
+[Benchmarks](https://github.com/szvsw/scythe-benchmark) show that the number of **terminal nodes** (`factor^max_depth`) is the dominant performance driver -- configurations producing the same terminal count perform similarly regardless of tree shape. Based on this:
+
 - For **small experiments** (< 100 specs), use `max_depth=0` (no recursion) -- the root runs all tasks directly.
-- For **medium experiments** (100 -- 10,000 specs), use `factor=10, max_depth=1` -- a single level of fan-out.
-- For **large experiments** (> 10,000 specs), use `factor=10, max_depth=2` or higher.
+- For **most experiments** (100+ specs), use **`max_depth=1`** with a high branching factor (e.g. `factor=32` or higher). This maximizes parallel dispatch while keeping the tree flat and simple. Typically something like 100-500 leaf simulations per terminal scatter/gather node is recommended, though this depends on the size of the simulation payloads to be enqueued.
+- Only increase `max_depth` beyond 1 if the number of child scatter/gather payloads would exceed Hatchet's enqueuing-message payload size limit.
 - The total fan-out capacity at the leaves is `factor^(max_depth)` nodes, each running `N / factor^(max_depth)` experiments.
+
+### Deadlock Safety
+
+Scatter/gather nodes hold a worker slot while waiting for their children to complete. To avoid deadlock, the number of scatter/gather worker slots must be **at least one more** than the total number of internal (non-terminal) scatter-gather nodes in the tree, that way there is always at least one terminal scatter-gather node enqueuing actual leaf simulations and waiting for them.
+
+With `max_depth=1`, there is only one internal node (the root), so two scatter/gather worker slots are trivially sufficient. Deeper trees require more slots: for a binary tree (`factor=2`) of depth $d$, there are $2^d - 1$ internal nodes.
+
+This is another reason to prefer `max_depth=1` -- it trivially avoids deadlock with minimal scatter/gather worker slot allocation.
 
 ## Payload Transfer via S3
 

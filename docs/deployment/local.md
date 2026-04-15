@@ -124,6 +124,9 @@ make allocate  # in another terminal
 
 ## Docker Compose
 
+!!! tip "Self-contained example"
+    The [scythe-example](https://github.com/szvsw/scythe-example) repository provides a complete Docker Compose setup that bundles Hatchet Lite, LocalStack (S3), and Scythe workers. A single `make up` command starts everything -- no external Hatchet instance or S3 bucket required. Use it as a starting point for your own projects.
+
 For containerized local development:
 
 ### Dockerfile

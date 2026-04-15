@@ -9,9 +9,6 @@
 Scythe is a lightweight tool which helps you seed and reap (scatter and gather)
 embarrassingly parallel experiments via the asynchronous distributed queue [Hatchet](https://hatchet.run).
 
-> The project is still in the VERY EARLY stages, and will likely evolve quite a bit in the
-> second half of 2025.
-
 - **Github repository**: <https://github.com/szvsw/scythe/>
 - **Documentation** <https://szvsw.github.io/scythe/>
 - **Example usage repository**: <https://github.com/szvsw/scythe-example>
@@ -64,9 +61,9 @@ pip install scythe-engine
 
 ## Documentation
 
-Coming soon...
+Full documentation is available at <https://szvsw.github.io/scythe/>.
 
-However, in the meantime, check out the [example project](https://github.com/szvsw/scythe-example) to get an idea of what using Scythe with Hatchet looks like.
+The [scythe-example](https://github.com/szvsw/scythe-example) repository provides a self-contained working project that bundles a local Hatchet instance, S3-compatible storage (LocalStack), and Scythe workers via Docker Compose. Run `make up` followed by `make allocate` to execute an end-to-end experiment.
 
 ### Example
 
@@ -168,8 +165,7 @@ class BuildingSimulationOutput(ExperimentOutputSpec):
 The schemas above will be exported into your results bucket as `experiment_io_spec.yaml`
 including any docstrings and descriptions, following [JSON Schema](https://docs.pydantic.dev/latest/concepts/json_schema/).
 
-_nb: you can also add your own dataframes to the outputs, e.g. for non-scalar values
-like timeseries and so on. documentation coming soon._
+_nb: you can also add your own dataframes to the outputs via the `dataframes` field on `ExperimentOutputSpec`, e.g. for non-scalar values like timeseries. See the [Defining Experiments](https://szvsw.github.io/scythe/guides/defining-experiments/) guide for details._
 
 Next, we define the actual simulation logic. We will decorate the simulation function
 with an indicator that it should be a part of our `ExperimentRegistry`, which configures
@@ -235,7 +231,7 @@ to load in the future from the effective data warehouse that each experiment cre
 will automatically transfer these from the local file system to the S3 bucket when
 the experiment task run finishes and store references to the outputs in a single dataframe for all the individual simulation runs for easy use in e.g. a dataloader.
 
-**_TODO: document artifact fetching_**
+Input artifacts referenced as `FileReference` fields (local `Path`, `S3Url`, or `HttpUrl`) are automatically fetched to a local cache before your simulation function runs. See the [Defining Experiments](https://szvsw.github.io/scythe/guides/defining-experiments/) guide for details on artifact handling.
 
 In order to run your parallel experiments, you will need to generate a population of samples
 from your design space. For now, we'll assume that you've done this with something like
@@ -347,7 +343,7 @@ The index of the dataframe will itself be a dataframe with the input specs and s
 
 If any of the output fields were of type `FileReference`, there will be an additional parquet file written to the bucket called `result_file_refs.pq` with the same MultiIndex as `scalars.pq` and whose columns are the names of the `FileReference` fields and whose values are the URIs of those references.
 
-**_TODO: document how additional dataframes of results are handled._**
+Additional DataFrames attached to `ExperimentOutputSpec.dataframes` are automatically aggregated across all tasks and written as separate Parquet files in the `final/` directory alongside `scalars.pq`. See the [Retrieving Results](https://szvsw.github.io/scythe/guides/retrieving-results/) guide for the full output structure.
 
 Additionally, in your bucket, you will find a `manifest.yml` file as well as an `input_artifacts.yml` and `experiment_io_spec.yml`.
 
@@ -522,10 +518,3 @@ required:
 title: ExperimentIO
 type: object
 ```
-
-## To-dos (help wanted!)
-
-- Start documenting
-- Results downloaders
-- optional handling of s3/https uris similarly to local on allocation (i.e. copying into experiment dir)
-- consider an abc or protocol on input with a `run` method.

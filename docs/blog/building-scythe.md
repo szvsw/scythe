@@ -283,8 +283,7 @@ class BuildingSimulationOutput(ExperimentOutputSpec):
 The schemas above will be exported into your results bucket as `experiment_io_spec.yaml`
 including any docstrings and descriptions, following [JSON Schema](https://docs.pydantic.dev/latest/concepts/json_schema/).
 
-_nb: you can also add your own dataframes to the outputs, e.g. for non-scalar values
-like timeseries and so on. documentation coming soon._
+_nb: you can also add your own dataframes to the outputs via the `dataframes` field on `ExperimentOutputSpec`, e.g. for non-scalar values like timeseries. See the [Defining Experiments](../guides/defining-experiments.md) guide for details._
 
 Next, we define the actual simulation logic. We will decorate the simulation function
 with an indicator that it should be a part of our `ExperimentRegistry`, which configures
@@ -350,7 +349,7 @@ to load in the future from the effective data warehouse that each experiment cre
 will automatically transfer these from the local file system to the S3 bucket when
 the experiment task run finishes and store references to the outputs in a single dataframe for all the individual simulation runs for easy use in e.g. a dataloader.
 
-**_TODO: document artifact fetching_**
+Input artifacts referenced as `FileReference` fields (local `Path`, `S3Url`, or `HttpUrl`) are automatically fetched to a local cache before your simulation function runs. See the [Defining Experiments](../guides/defining-experiments.md) guide for details on artifact handling.
 
 In order to run your parallel experiments, you will need to generate a population of samples
 from your design space. For now, we'll assume that you've done this with something like
@@ -419,7 +418,7 @@ from sample import sample
 if __name__ == "__main__":
 
     experiment = BaseExperiment(
-        experiment=simulate_energy
+        runnable=simulate_energy
 
     )
     specs = sample(10)
@@ -435,7 +434,7 @@ if __name__ == "__main__":
 1. This will auto-resolve the most recent experiment run of the same name in the bucket
    and increment the version, e.g. `v1.2.3` with `bumpminor` will transition to `v.1.3.0`.
 
-The `run` object is a `scythe.allocate.ExperimentRun` while the `ref` is a
+The `run` object is a `scythe.experiments.ExperimentRun` while the `ref` is a
 `hatchet_sdk.runnables.workflow.TaskRunRef`. You can wait for the result to finish with
 either `ref.result()` (blocking) or `await ref.aio_result()` (async). The final task result
 will contain the URIs of any aggregated dataframes written to the buket.
@@ -462,7 +461,7 @@ The index of the dataframe will itself be a dataframe with the input specs and s
 
 If any of the output fields were of type `FileReference`, there will be an additional parquet file written to the bucket called `result_file_refs.pq` with the same MultiIndex as `scalars.pq` and whose columns are the names of the `FileReference` fields and whose values are the URIs of those references.
 
-**_TODO: document how additional dataframes of results are handled._**
+Additional DataFrames attached to `ExperimentOutputSpec.dataframes` are automatically aggregated across all tasks and written as separate Parquet files in the `final/` directory alongside `scalars.pq`. See the [Retrieving Results](../guides/retrieving-results.md) guide for the full output structure.
 
 Additionally, in your bucket, you will find a `manifest.yml` file as well as an `input_artifacts.yml` and `experiment_io_spec.yml`.
 
@@ -1218,10 +1217,9 @@ deploying a stack in AWS.
 
 As before, we will need a VPC, an ECS cluster, and an ECS service which runs the worker task. If
 you are self-hosting Hatchet, you probably will want to deploy the workers in the same VPC
-as your Hatchet engine so that you can skip the load balancer in front of the engine and save costs - documentation for that
-coming soon (mostly just requires overriding some vpc settings and some connection string urls
-which normally are encoded in the client token by providing them
-via the worker's env vars). For brevity, I'm just illustrating a typical worker deployment here connecting
+as your Hatchet engine so that you can skip the load balancer in front of the engine and save costs (this mostly just requires overriding some VPC settings and some connection string URLs
+which are normally encoded in the client token, by providing them
+via the worker's env vars -- see the [hatchet-sst](https://github.com/szvsw/hatchet-sst) repo for a reference implementation). For brevity, I'm just illustrating a typical worker deployment here connecting
 to Hatchet cloud, including getting an existing bucket if indicated and ensuring that
 the worker nodes have access to that bucket (or creating a new one if an existing bucket
 name is not provided).
@@ -1375,4 +1373,4 @@ do just one, or neither of course) and then specify on your tasks that they requ
 This can be useful to e.g. differentiate your `scatter/gather` workers from your main experiment workers
 without needing to carefully control which tasks the workers register.
 
-_TODO: illustrate indicating that a task requires high memory or cpu_
+On the task side, you can require specific labels via the `@ExperimentRegistry.Register()` decorator's `desired_worker_labels` parameter. See the [Workers](../guides/workers.md) guide for details on affinity label matching.
