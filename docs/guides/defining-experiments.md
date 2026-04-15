@@ -110,7 +110,7 @@ return MyOutput(
 Each DataFrame in `dataframes` is serialized to Parquet and uploaded to S3 individually per task. At the experiment level, all DataFrames with the same key are concatenated across tasks into a single Parquet file in the `final/` directory.
 
 !!! note
-The keys `scalars` and `result_file_refs` are reserved and will raise an error if used in `dataframes`.
+    The keys `scalars` and `result_file_refs` are reserved and will raise an error if used in `dataframes`.
 
 ## FileReference
 

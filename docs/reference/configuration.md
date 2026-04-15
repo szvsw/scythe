@@ -27,7 +27,7 @@ Configured via `TimeoutSettings` (prefix: `SCYTHE_TIMEOUT_`):
 `Duration` values accept Hatchet duration strings like `"30s"`, `"5m"`, `"2h"`, `"1d"`, or Python `timedelta` objects.
 
 !!! note
-The `EXPERIMENT_SCHEDULE` and `EXPERIMENT_EXECUTION` timeouts are defaults used by `@ExperimentRegistry.Register()`. You can override them per-experiment using the `schedule_timeout` and `execution_timeout` parameters of the decorator.
+    The `EXPERIMENT_SCHEDULE` and `EXPERIMENT_EXECUTION` timeouts are defaults used by `@ExperimentRegistry.Register()`. You can override them per-experiment using the `schedule_timeout` and `execution_timeout` parameters of the decorator.
 
 ### Timeout Guidance
 

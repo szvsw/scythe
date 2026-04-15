@@ -105,7 +105,7 @@ ExperimentRegistry.Include(my_pipeline)
 This makes the workflow available for allocation via `BaseExperiment` and ensures workers can serve it.
 
 !!! note
-`Include()` accepts both `Standalone` and `Workflow` objects. For standalone tasks created by `@ExperimentRegistry.Register()`, registration happens automatically via the decorator.
+    `Include()` accepts both `Standalone` and `Workflow` objects. For standalone tasks created by `@ExperimentRegistry.Register()`, registration happens automatically via the decorator.
 
 ### Allocating a Workflow
 

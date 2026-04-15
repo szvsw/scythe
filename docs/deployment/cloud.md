@@ -114,7 +114,7 @@ For production deployments, you may want to self-host Hatchet rather than using 
 A self-hosted Hatchet deployment costs approximately $13/day on AWS and provides full control over the infrastructure.
 
 !!! tip
-For development and testing, [Hatchet Cloud](https://cloud.hatchet.run) is the easiest option. Self-hosting is mainly beneficial for production workloads where you need data locality, cost optimization, or compliance requirements.
+    For development and testing, [Hatchet Cloud](https://cloud.hatchet.run) is the easiest option. Self-hosting is mainly beneficial for production workloads where you need data locality, cost optimization, or compliance requirements.
 
 ## Networking
 
