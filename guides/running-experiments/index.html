@@ -1380,68 +1380,62 @@
 </span><span id="__span-5-14"><a id="__codelineno-5-14" name="__codelineno-5-14" href="#__codelineno-5-14"></a><span class="n">run</span><span class="p">,</span> <span class="n">ref</span> <span class="o">=</span> <span class="n">experiment</span><span class="o">.</span><span class="n">allocate</span><span class="p">(</span>
 </span><span id="__span-5-15"><a id="__codelineno-5-15" name="__codelineno-5-15" href="#__codelineno-5-15"></a>    <span class="n">specs</span><span class="p">,</span>
 </span><span id="__span-5-16"><a id="__codelineno-5-16" name="__codelineno-5-16" href="#__codelineno-5-16"></a>    <span class="n">version</span><span class="o">=</span><span class="s2">&quot;bumpminor&quot;</span><span class="p">,</span>
-</span><span id="__span-5-17"><a id="__codelineno-5-17" name="__codelineno-5-17" href="#__codelineno-5-17"></a>    <span class="n">recursion_map</span><span class="o">=</span><span class="n">RecursionMap</span><span class="p">(</span><span class="n">factor</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span> <span class="n">max_depth</span><span class="o">=</span><span class="mi">2</span><span class="p">),</span>
+</span><span id="__span-5-17"><a id="__codelineno-5-17" name="__codelineno-5-17" href="#__codelineno-5-17"></a>    <span class="n">recursion_map</span><span class="o">=</span><span class="n">RecursionMap</span><span class="p">(</span><span class="n">factor</span><span class="o">=</span><span class="mi">100</span><span class="p">,</span> <span class="n">max_depth</span><span class="o">=</span><span class="mi">2</span><span class="p">),</span>
 </span><span id="__span-5-18"><a id="__codelineno-5-18" name="__codelineno-5-18" href="#__codelineno-5-18"></a><span class="p">)</span>
 </span></code></pre></div>
-<p>When <code>recursion_map</code> is not specified, the default is <code>RecursionMap(factor=10, max_depth=0)</code> (no recursion).</p>
-<p>For dynamic sizing based on payload, you can compute the recursion map programmatically:</p>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">math</span>
-</span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>
-</span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="n">n_specs</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">specs</span><span class="p">)</span>
-</span><span id="__span-6-4"><a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="n">max_per_leaf</span> <span class="o">=</span> <span class="mi">100</span>
-</span><span id="__span-6-5"><a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="n">factor</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="mi">10</span><span class="p">,</span> <span class="n">n_specs</span><span class="p">)</span>
-</span><span id="__span-6-6"><a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a><span class="n">max_depth</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">math</span><span class="o">.</span><span class="n">ceil</span><span class="p">(</span><span class="n">math</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">n_specs</span> <span class="o">/</span> <span class="n">max_per_leaf</span><span class="p">,</span> <span class="n">factor</span><span class="p">)))</span> <span class="k">if</span> <span class="n">n_specs</span> <span class="o">&gt;</span> <span class="n">max_per_leaf</span> <span class="k">else</span> <span class="mi">0</span>
-</span><span id="__span-6-7"><a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a>
-</span><span id="__span-6-8"><a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a><span class="n">recursion_map</span> <span class="o">=</span> <span class="n">RecursionMap</span><span class="p">(</span><span class="n">factor</span><span class="o">=</span><span class="n">factor</span><span class="p">,</span> <span class="n">max_depth</span><span class="o">=</span><span class="n">max_depth</span><span class="p">)</span>
-</span></code></pre></div>
+<p>When <code>recursion_map</code> is not specified, the default is <code>RecursionMap(factor=10, max_depth=0)</code> (no recursion, factor ignored).</p>
+<div class="admonition tip">
+<p class="admonition-title">Prefer <code>max_depth=1</code> with a high branching factor</p>
+<p><a href="https://github.com/szvsw/scythe-benchmark">Benchmarks</a> show that the number of terminal nodes (<code>factor^max_depth</code>) is the dominant throughput driver. Using <code>max_depth=1</code> with a high factor (e.g. 32+) maximizes parallelism while keeping deadlock avoidance trivial (only one scatter/gather slot needed). Only increase <code>max_depth</code> if the required terminal scatter/gather-node count is so large that a single scatter/gather node at levels of the tree closer to the root would exceed Hatchet's batched enqueuing limit when enqueueing the next level of the tree. See <a href="../../concepts/scatter-gather/#choosing-parameters">Scatter/Gather Concepts</a> for details.</p>
+</div>
 <h2 id="single-spec-allocation">Single-Spec Allocation<a class="headerlink" href="#single-spec-allocation" title="Permanent link">#</a></h2>
 <p>You can pass a <strong>single spec</strong> (rather than a list) to <code>allocate()</code> for a versioned one-off run. This works with any runnable -- <code>Standalone</code> or <code>Workflow</code> -- and bypasses scatter/gather entirely:</p>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">scythe.experiments</span><span class="w"> </span><span class="kn">import</span> <span class="n">BaseExperiment</span>
-</span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">my_experiments</span><span class="w"> </span><span class="kn">import</span> <span class="n">simulate_energy</span><span class="p">,</span> <span class="n">MyInput</span>
-</span><span id="__span-7-3"><a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>
-</span><span id="__span-7-4"><a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="n">experiment</span> <span class="o">=</span> <span class="n">BaseExperiment</span><span class="p">(</span><span class="n">runnable</span><span class="o">=</span><span class="n">simulate_energy</span><span class="p">)</span>
-</span><span id="__span-7-5"><a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a>
-</span><span id="__span-7-6"><a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a><span class="n">spec</span> <span class="o">=</span> <span class="n">MyInput</span><span class="p">(</span>
-</span><span id="__span-7-7"><a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a>    <span class="n">temperature</span><span class="o">=</span><span class="mf">300.0</span><span class="p">,</span>
-</span><span id="__span-7-8"><a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a>    <span class="n">pressure</span><span class="o">=</span><span class="mf">1e5</span><span class="p">,</span>
-</span><span id="__span-7-9"><a id="__codelineno-7-9" name="__codelineno-7-9" href="#__codelineno-7-9"></a>    <span class="n">material</span><span class="o">=</span><span class="s2">&quot;steel&quot;</span><span class="p">,</span>
-</span><span id="__span-7-10"><a id="__codelineno-7-10" name="__codelineno-7-10" href="#__codelineno-7-10"></a>    <span class="n">experiment_id</span><span class="o">=</span><span class="s2">&quot;placeholder&quot;</span><span class="p">,</span>
-</span><span id="__span-7-11"><a id="__codelineno-7-11" name="__codelineno-7-11" href="#__codelineno-7-11"></a>    <span class="n">sort_index</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>
-</span><span id="__span-7-12"><a id="__codelineno-7-12" name="__codelineno-7-12" href="#__codelineno-7-12"></a><span class="p">)</span>
-</span><span id="__span-7-13"><a id="__codelineno-7-13" name="__codelineno-7-13" href="#__codelineno-7-13"></a>
-</span><span id="__span-7-14"><a id="__codelineno-7-14" name="__codelineno-7-14" href="#__codelineno-7-14"></a><span class="n">run</span><span class="p">,</span> <span class="n">ref</span> <span class="o">=</span> <span class="n">experiment</span><span class="o">.</span><span class="n">allocate</span><span class="p">(</span><span class="n">spec</span><span class="p">,</span> <span class="n">version</span><span class="o">=</span><span class="s2">&quot;bumpminor&quot;</span><span class="p">)</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">scythe.experiments</span><span class="w"> </span><span class="kn">import</span> <span class="n">BaseExperiment</span>
+</span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">my_experiments</span><span class="w"> </span><span class="kn">import</span> <span class="n">simulate_energy</span><span class="p">,</span> <span class="n">MyInput</span>
+</span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>
+</span><span id="__span-6-4"><a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="n">experiment</span> <span class="o">=</span> <span class="n">BaseExperiment</span><span class="p">(</span><span class="n">runnable</span><span class="o">=</span><span class="n">simulate_energy</span><span class="p">)</span>
+</span><span id="__span-6-5"><a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>
+</span><span id="__span-6-6"><a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a><span class="n">spec</span> <span class="o">=</span> <span class="n">MyInput</span><span class="p">(</span>
+</span><span id="__span-6-7"><a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a>    <span class="n">temperature</span><span class="o">=</span><span class="mf">300.0</span><span class="p">,</span>
+</span><span id="__span-6-8"><a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a>    <span class="n">pressure</span><span class="o">=</span><span class="mf">1e5</span><span class="p">,</span>
+</span><span id="__span-6-9"><a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a>    <span class="n">material</span><span class="o">=</span><span class="s2">&quot;steel&quot;</span><span class="p">,</span>
+</span><span id="__span-6-10"><a id="__codelineno-6-10" name="__codelineno-6-10" href="#__codelineno-6-10"></a>    <span class="n">experiment_id</span><span class="o">=</span><span class="s2">&quot;placeholder&quot;</span><span class="p">,</span>
+</span><span id="__span-6-11"><a id="__codelineno-6-11" name="__codelineno-6-11" href="#__codelineno-6-11"></a>    <span class="n">sort_index</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>
+</span><span id="__span-6-12"><a id="__codelineno-6-12" name="__codelineno-6-12" href="#__codelineno-6-12"></a><span class="p">)</span>
+</span><span id="__span-6-13"><a id="__codelineno-6-13" name="__codelineno-6-13" href="#__codelineno-6-13"></a>
+</span><span id="__span-6-14"><a id="__codelineno-6-14" name="__codelineno-6-14" href="#__codelineno-6-14"></a><span class="n">run</span><span class="p">,</span> <span class="n">ref</span> <span class="o">=</span> <span class="n">experiment</span><span class="o">.</span><span class="n">allocate</span><span class="p">(</span><span class="n">spec</span><span class="p">,</span> <span class="n">version</span><span class="o">=</span><span class="s2">&quot;bumpminor&quot;</span><span class="p">)</span>
 </span></code></pre></div>
 <p>The runnable is triggered directly on Hatchet, giving you full Scythe versioning and S3 metadata for a single run. This is useful for testing, debugging, or one-off experiments. For more details, including multi-step <code>Workflow</code> pipelines, see <a href="../workflow-experiments/">Workflow &amp; Single-Run Experiments</a>.</p>
 <h2 id="waiting-for-results">Waiting for Results<a class="headerlink" href="#waiting-for-results" title="Permanent link">#</a></h2>
 <p>The <code>ref</code> returned by <code>allocate()</code> lets you wait for the experiment to complete:</p>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="c1"># Blocking</span>
-</span><span id="__span-8-2"><a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="n">result</span> <span class="o">=</span> <span class="n">ref</span><span class="o">.</span><span class="n">result</span><span class="p">()</span>
-</span><span id="__span-8-3"><a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>
-</span><span id="__span-8-4"><a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="c1"># Async</span>
-</span><span id="__span-8-5"><a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a><span class="n">result</span> <span class="o">=</span> <span class="k">await</span> <span class="n">ref</span><span class="o">.</span><span class="n">aio_result</span><span class="p">()</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="c1"># Blocking</span>
+</span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="n">result</span> <span class="o">=</span> <span class="n">ref</span><span class="o">.</span><span class="n">result</span><span class="p">()</span>
+</span><span id="__span-7-3"><a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>
+</span><span id="__span-7-4"><a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="c1"># Async</span>
+</span><span id="__span-7-5"><a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a><span class="n">result</span> <span class="o">=</span> <span class="k">await</span> <span class="n">ref</span><span class="o">.</span><span class="n">aio_result</span><span class="p">()</span>
 </span></code></pre></div>
 <p>For batch allocations, the result is a <code>ScatterGatherResult</code> containing the S3 URIs of the aggregated output DataFrames. For single-spec allocations, the result is the runnable's return value.</p>
 <h2 id="s3-directory-layout">S3 Directory Layout<a class="headerlink" href="#s3-directory-layout" title="Permanent link">#</a></h2>
 <p>After a successful run, the experiment directory in S3 contains:</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>&lt;bucket_prefix&gt;/&lt;experiment_name&gt;/&lt;version&gt;/&lt;timestamp&gt;/
-</span><span id="__span-9-2"><a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>├── manifest.yml                    # Run metadata
-</span><span id="__span-9-3"><a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>├── experiment_io_spec.yml          # JSON Schema for input/output types
-</span><span id="__span-9-4"><a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a>├── input_artifacts.yml             # S3 URIs of uploaded input artifacts
-</span><span id="__span-9-5"><a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a>├── specs.pq                        # All input specs as Parquet
-</span><span id="__span-9-6"><a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a>├── workflow_spec.yml               # Input spec (single-spec runs only)
-</span><span id="__span-9-7"><a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a>├── artifacts/                      # Uploaded input artifact files
-</span><span id="__span-9-8"><a id="__codelineno-9-8" name="__codelineno-9-8" href="#__codelineno-9-8"></a>│   └── &lt;field_name&gt;/
-</span><span id="__span-9-9"><a id="__codelineno-9-9" name="__codelineno-9-9" href="#__codelineno-9-9"></a>│       └── &lt;file&gt;
-</span><span id="__span-9-10"><a id="__codelineno-9-10" name="__codelineno-9-10" href="#__codelineno-9-10"></a>├── scatter-gather/                 # Intermediate scatter/gather data (batch only)
-</span><span id="__span-9-11"><a id="__codelineno-9-11" name="__codelineno-9-11" href="#__codelineno-9-11"></a>│   ├── input/
-</span><span id="__span-9-12"><a id="__codelineno-9-12" name="__codelineno-9-12" href="#__codelineno-9-12"></a>│   └── output/
-</span><span id="__span-9-13"><a id="__codelineno-9-13" name="__codelineno-9-13" href="#__codelineno-9-13"></a>├── final/                          # Aggregated results (batch only)
-</span><span id="__span-9-14"><a id="__codelineno-9-14" name="__codelineno-9-14" href="#__codelineno-9-14"></a>│   ├── scalars.pq
-</span><span id="__span-9-15"><a id="__codelineno-9-15" name="__codelineno-9-15" href="#__codelineno-9-15"></a>│   ├── result_file_refs.pq
-</span><span id="__span-9-16"><a id="__codelineno-9-16" name="__codelineno-9-16" href="#__codelineno-9-16"></a>│   └── &lt;user_dataframe&gt;.pq
-</span><span id="__span-9-17"><a id="__codelineno-9-17" name="__codelineno-9-17" href="#__codelineno-9-17"></a>└── results/                        # Per-task output files
-</span><span id="__span-9-18"><a id="__codelineno-9-18" name="__codelineno-9-18" href="#__codelineno-9-18"></a>    └── &lt;field_name&gt;/
-</span><span id="__span-9-19"><a id="__codelineno-9-19" name="__codelineno-9-19" href="#__codelineno-9-19"></a>        └── &lt;run_id&gt;.&lt;ext&gt;
+<div class="language-text highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>&lt;bucket_prefix&gt;/&lt;experiment_name&gt;/&lt;version&gt;/&lt;timestamp&gt;/
+</span><span id="__span-8-2"><a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>├── manifest.yml                    # Run metadata
+</span><span id="__span-8-3"><a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>├── experiment_io_spec.yml          # JSON Schema for input/output types
+</span><span id="__span-8-4"><a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a>├── input_artifacts.yml             # S3 URIs of uploaded input artifacts
+</span><span id="__span-8-5"><a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a>├── specs.pq                        # All input specs as Parquet
+</span><span id="__span-8-6"><a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a>├── workflow_spec.yml               # Input spec (single-spec runs only)
+</span><span id="__span-8-7"><a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a>├── artifacts/                      # Uploaded input artifact files
+</span><span id="__span-8-8"><a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a>│   └── &lt;field_name&gt;/
+</span><span id="__span-8-9"><a id="__codelineno-8-9" name="__codelineno-8-9" href="#__codelineno-8-9"></a>│       └── &lt;file&gt;
+</span><span id="__span-8-10"><a id="__codelineno-8-10" name="__codelineno-8-10" href="#__codelineno-8-10"></a>├── scatter-gather/                 # Intermediate scatter/gather data (batch only)
+</span><span id="__span-8-11"><a id="__codelineno-8-11" name="__codelineno-8-11" href="#__codelineno-8-11"></a>│   ├── input/
+</span><span id="__span-8-12"><a id="__codelineno-8-12" name="__codelineno-8-12" href="#__codelineno-8-12"></a>│   └── output/
+</span><span id="__span-8-13"><a id="__codelineno-8-13" name="__codelineno-8-13" href="#__codelineno-8-13"></a>├── final/                          # Aggregated results (batch only)
+</span><span id="__span-8-14"><a id="__codelineno-8-14" name="__codelineno-8-14" href="#__codelineno-8-14"></a>│   ├── scalars.pq
+</span><span id="__span-8-15"><a id="__codelineno-8-15" name="__codelineno-8-15" href="#__codelineno-8-15"></a>│   ├── result_file_refs.pq
+</span><span id="__span-8-16"><a id="__codelineno-8-16" name="__codelineno-8-16" href="#__codelineno-8-16"></a>│   └── &lt;user_dataframe&gt;.pq
+</span><span id="__span-8-17"><a id="__codelineno-8-17" name="__codelineno-8-17" href="#__codelineno-8-17"></a>└── results/                        # Per-task output files
+</span><span id="__span-8-18"><a id="__codelineno-8-18" name="__codelineno-8-18" href="#__codelineno-8-18"></a>    └── &lt;field_name&gt;/
+</span><span id="__span-8-19"><a id="__codelineno-8-19" name="__codelineno-8-19" href="#__codelineno-8-19"></a>        └── &lt;run_id&gt;.&lt;ext&gt;
 </span></code></pre></div>
 
 

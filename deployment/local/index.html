@@ -1447,6 +1447,10 @@
 </span><span id="__span-9-3"><a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>make<span class="w"> </span>allocate<span class="w">  </span><span class="c1"># in another terminal</span>
 </span></code></pre></div>
 <h2 id="docker-compose">Docker Compose<a class="headerlink" href="#docker-compose" title="Permanent link">#</a></h2>
+<div class="admonition tip">
+<p class="admonition-title">Self-contained example</p>
+<p>The <a href="https://github.com/szvsw/scythe-example">scythe-example</a> repository provides a complete Docker Compose setup that bundles Hatchet Lite, LocalStack (S3), and Scythe workers. A single <code>make up</code> command starts everything -- no external Hatchet instance or S3 bucket required. Use it as a starting point for your own projects.</p>
+</div>
 <p>For containerized local development:</p>
 <h3 id="dockerfile">Dockerfile<a class="headerlink" href="#dockerfile" title="Permanent link">#</a></h3>
 <div class="language-dockerfile highlight"><span class="filename">Dockerfile.worker</span><pre><span></span><code><span id="__span-10-1"><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="k">ARG</span><span class="w"> </span><span class="nv">PYTHON_VERSION</span><span class="o">=</span><span class="m">3</span>.12

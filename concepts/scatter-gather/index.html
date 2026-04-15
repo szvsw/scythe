@@ -566,6 +566,15 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#deadlock-safety" class="md-nav__link">
+    <span class="md-ellipsis">
+      Deadlock Safety
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -1167,6 +1176,15 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#deadlock-safety" class="md-nav__link">
+    <span class="md-ellipsis">
+      Deadlock Safety
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -1278,12 +1296,17 @@
 <li>The current recursion depth has reached <code>max_depth</code></li>
 </ul>
 <h3 id="choosing-parameters">Choosing Parameters<a class="headerlink" href="#choosing-parameters" title="Permanent link">#</a></h3>
+<p><a href="https://github.com/szvsw/scythe-benchmark">Benchmarks</a> show that the number of <strong>terminal nodes</strong> (<code>factor^max_depth</code>) is the dominant performance driver -- configurations producing the same terminal count perform similarly regardless of tree shape. Based on this:</p>
 <ul>
 <li>For <strong>small experiments</strong> (&lt; 100 specs), use <code>max_depth=0</code> (no recursion) -- the root runs all tasks directly.</li>
-<li>For <strong>medium experiments</strong> (100 -- 10,000 specs), use <code>factor=10, max_depth=1</code> -- a single level of fan-out.</li>
-<li>For <strong>large experiments</strong> (&gt; 10,000 specs), use <code>factor=10, max_depth=2</code> or higher.</li>
+<li>For <strong>most experiments</strong> (100+ specs), use <strong><code>max_depth=1</code></strong> with a high branching factor (e.g. <code>factor=32</code> or higher). This maximizes parallel dispatch while keeping the tree flat and simple. Aim for roughly 100–500 leaf simulations per terminal scatter/gather node, though the right number depends on per-simulation payload size.</li>
+<li>Only increase <code>max_depth</code> beyond 1 if the required number of terminal nodes is so large that the branching factor at a single level would exceed Hatchet's batched enqueuing limit. For example, if you need 20,000 terminal nodes to ensure that you enqueue no more than, say, 300 leaf simulation tasks per terminal scatter/gather node, using <code>factor=20000, max_depth=1</code> forces the root to enqueue 20,000 child scatter/gather tasks at once. Instead, use <code>factor=150, max_depth=2</code> (producing 22,500 terminal nodes) so that no single scatter/gather node enqueues more than 150 children scatter/gather node.</li>
 <li>The total fan-out capacity at the leaves is <code>factor^(max_depth)</code> nodes, each running <code>N / factor^(max_depth)</code> experiments.</li>
 </ul>
+<h3 id="deadlock-safety">Deadlock Safety<a class="headerlink" href="#deadlock-safety" title="Permanent link">#</a></h3>
+<p>Scatter/gather nodes hold a worker slot while waiting for their children to complete. To avoid deadlock, the number of scatter/gather worker slots must be <strong>at least one more</strong> than the total number of internal (non-terminal) scatter-gather nodes in the tree, that way there is always at least one terminal scatter-gather node enqueuing actual leaf simulations and waiting for them.</p>
+<p>With <code>max_depth=1</code>, there is only one internal node (the root), so two scatter/gather worker slots are trivially sufficient. Deeper trees require more slots: for a binary tree (<code>factor=2</code>) of depth <span class="arithmatex">\(d\)</span>, there are <span class="arithmatex">\(2^d - 1\)</span> internal nodes.</p>
+<p>This is another reason to prefer <code>max_depth=1</code> -- it trivially avoids deadlock with minimal scatter/gather worker slot allocation.</p>
 <h2 id="payload-transfer-via-s3">Payload Transfer via S3<a class="headerlink" href="#payload-transfer-via-s3" title="Permanent link">#</a></h2>
 <p>Hatchet has a ~4 MB payload size limit. Since experiment specs can be large (especially with many fields or large populations), Scythe stores spec data as Parquet files in S3 and passes only the S3 URI in the Hatchet payload.</p>
 <p>At each level of the scatter/gather tree:</p>

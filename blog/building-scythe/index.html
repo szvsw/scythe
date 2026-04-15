@@ -1965,8 +1965,7 @@ separate table of file outputs.</p>
 </ol>
 <p>The schemas above will be exported into your results bucket as <code>experiment_io_spec.yaml</code>
 including any docstrings and descriptions, following <a href="https://docs.pydantic.dev/latest/concepts/json_schema/">JSON Schema</a>.</p>
-<p><em>nb: you can also add your own dataframes to the outputs, e.g. for non-scalar values
-like timeseries and so on. documentation coming soon.</em></p>
+<p><em>nb: you can also add your own dataframes to the outputs via the <code>dataframes</code> field on <code>ExperimentOutputSpec</code>, e.g. for non-scalar values like timeseries. See the <a href="../../guides/defining-experiments/">Defining Experiments</a> guide for details.</em></p>
 <p>Next, we define the actual simulation logic. We will decorate the simulation function
 with an indicator that it should be a part of our <code>ExperimentRegistry</code>, which configures
 all of the fancy scatter/gather logic. Note that the function can only take a single
@@ -2024,7 +2023,7 @@ runs (e.g. with many channels high-resolution timeseries data or images) and whi
 to load in the future from the effective data warehouse that each experiment creates. Scythe
 will automatically transfer these from the local file system to the S3 bucket when
 the experiment task run finishes and store references to the outputs in a single dataframe for all the individual simulation runs for easy use in e.g. a dataloader.</p>
-<p><strong><em>TODO: document artifact fetching</em></strong></p>
+<p>Input artifacts referenced as <code>FileReference</code> fields (local <code>Path</code>, <code>S3Url</code>, or <code>HttpUrl</code>) are automatically fetched to a local cache before your simulation function runs. See the <a href="../../guides/defining-experiments/">Defining Experiments</a> guide for details on artifact handling.</p>
 <p>In order to run your parallel experiments, you will need to generate a population of samples
 from your design space. For now, we'll assume that you've done this with something like
 numpy, pandas, or your favorite design-of-experiments lib. It might look something like this.</p>
@@ -2088,7 +2087,7 @@ for the same version. You can also pass in a version manually as a <code>scythe.
 </span><span id="__span-5-6"><a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a><span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">&quot;__main__&quot;</span><span class="p">:</span>
 </span><span id="__span-5-7"><a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a>
 </span><span id="__span-5-8"><a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a>    <span class="n">experiment</span> <span class="o">=</span> <span class="n">BaseExperiment</span><span class="p">(</span>
-</span><span id="__span-5-9"><a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a>        <span class="n">experiment</span><span class="o">=</span><span class="n">simulate_energy</span>
+</span><span id="__span-5-9"><a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a>        <span class="n">runnable</span><span class="o">=</span><span class="n">simulate_energy</span>
 </span><span id="__span-5-10"><a id="__codelineno-5-10" name="__codelineno-5-10" href="#__codelineno-5-10"></a>
 </span><span id="__span-5-11"><a id="__codelineno-5-11" name="__codelineno-5-11" href="#__codelineno-5-11"></a>    <span class="p">)</span>
 </span><span id="__span-5-12"><a id="__codelineno-5-12" name="__codelineno-5-12" href="#__codelineno-5-12"></a>    <span class="n">specs</span> <span class="o">=</span> <span class="n">sample</span><span class="p">(</span><span class="mi">10</span><span class="p">)</span>
@@ -2102,7 +2101,7 @@ for the same version. You can also pass in a version manually as a <code>scythe.
 <li>This will auto-resolve the most recent experiment run of the same name in the bucket
    and increment the version, e.g. <code>v1.2.3</code> with <code>bumpminor</code> will transition to <code>v.1.3.0</code>.</li>
 </ol>
-<p>The <code>run</code> object is a <code>scythe.allocate.ExperimentRun</code> while the <code>ref</code> is a
+<p>The <code>run</code> object is a <code>scythe.experiments.ExperimentRun</code> while the <code>ref</code> is a
 <code>hatchet_sdk.runnables.workflow.TaskRunRef</code>. You can wait for the result to finish with
 either <code>ref.result()</code> (blocking) or <code>await ref.aio_result()</code> (async). The final task result
 will contain the URIs of any aggregated dataframes written to the buket.</p>
@@ -2187,7 +2186,7 @@ will contain the URIs of any aggregated dataframes written to the buket.</p>
 </tbody>
 </table>
 <p>If any of the output fields were of type <code>FileReference</code>, there will be an additional parquet file written to the bucket called <code>result_file_refs.pq</code> with the same MultiIndex as <code>scalars.pq</code> and whose columns are the names of the <code>FileReference</code> fields and whose values are the URIs of those references.</p>
-<p><strong><em>TODO: document how additional dataframes of results are handled.</em></strong></p>
+<p>Additional DataFrames attached to <code>ExperimentOutputSpec.dataframes</code> are automatically aggregated across all tasks and written as separate Parquet files in the <code>final/</code> directory alongside <code>scalars.pq</code>. See the <a href="../../guides/retrieving-results/">Retrieving Results</a> guide for the full output structure.</p>
 <p>Additionally, in your bucket, you will find a <code>manifest.yml</code> file as well as an <code>input_artifacts.yml</code> and <code>experiment_io_spec.yml</code>.</p>
 <div class="language-yaml highlight"><span class="filename">manifest.yml</span><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="nt">experiment_id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">building_energy/v1.0.0/2025-07-23_12-59-51</span>
 </span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="nt">experiment_name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">scythe_experiment_simulate_energy</span>
@@ -2876,10 +2875,9 @@ run <code>sst init</code>.</p>
 deploying a stack in AWS.</p>
 <p>As before, we will need a VPC, an ECS cluster, and an ECS service which runs the worker task. If
 you are self-hosting Hatchet, you probably will want to deploy the workers in the same VPC
-as your Hatchet engine so that you can skip the load balancer in front of the engine and save costs - documentation for that
-coming soon (mostly just requires overriding some vpc settings and some connection string urls
-which normally are encoded in the client token by providing them
-via the worker's env vars). For brevity, I'm just illustrating a typical worker deployment here connecting
+as your Hatchet engine so that you can skip the load balancer in front of the engine and save costs (this mostly just requires overriding some VPC settings and some connection string URLs
+which are normally encoded in the client token, by providing them
+via the worker's env vars -- see the <a href="https://github.com/szvsw/hatchet-sst">hatchet-sst</a> repo for a reference implementation). For brevity, I'm just illustrating a typical worker deployment here connecting
 to Hatchet cloud, including getting an existing bucket if indicated and ensuring that
 the worker nodes have access to that bucket (or creating a new one if an existing bucket
 name is not provided).</p>
@@ -3020,7 +3018,7 @@ once or twice a month (or sometimes months plural), it's not a bother at all.</p
 do just one, or neither of course) and then specify on your tasks that they require one or the other (or both!).
 This can be useful to e.g. differentiate your <code>scatter/gather</code> workers from your main experiment workers
 without needing to carefully control which tasks the workers register.</p>
-<p><em>TODO: illustrate indicating that a task requires high memory or cpu</em></p>
+<p>On the task side, you can require specific labels via the <code>@ExperimentRegistry.Register()</code> decorator's <code>desired_worker_labels</code> parameter. See the <a href="../../guides/workers/">Workers</a> guide for details on affinity label matching.</p>
 
 
 

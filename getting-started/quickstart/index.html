@@ -1269,13 +1269,17 @@
 </span><span id="__span-2-32"><a id="__codelineno-2-32" name="__codelineno-2-32" href="#__codelineno-2-32"></a><span class="n">run</span><span class="p">,</span> <span class="n">ref</span> <span class="o">=</span> <span class="n">experiment</span><span class="o">.</span><span class="n">allocate</span><span class="p">(</span>
 </span><span id="__span-2-33"><a id="__codelineno-2-33" name="__codelineno-2-33" href="#__codelineno-2-33"></a>    <span class="n">specs</span><span class="p">,</span>
 </span><span id="__span-2-34"><a id="__codelineno-2-34" name="__codelineno-2-34" href="#__codelineno-2-34"></a>    <span class="n">version</span><span class="o">=</span><span class="s2">&quot;bumpminor&quot;</span><span class="p">,</span>  <span class="c1"># (1)!</span>
-</span><span id="__span-2-35"><a id="__codelineno-2-35" name="__codelineno-2-35" href="#__codelineno-2-35"></a>    <span class="n">recursion_map</span><span class="o">=</span><span class="n">RecursionMap</span><span class="p">(</span><span class="n">factor</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span> <span class="n">max_depth</span><span class="o">=</span><span class="mi">2</span><span class="p">),</span>  <span class="c1"># (2)!</span>
+</span><span id="__span-2-35"><a id="__codelineno-2-35" name="__codelineno-2-35" href="#__codelineno-2-35"></a>    <span class="n">recursion_map</span><span class="o">=</span><span class="n">RecursionMap</span><span class="p">(</span><span class="n">factor</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span> <span class="n">max_depth</span><span class="o">=</span><span class="mi">1</span><span class="p">),</span>  <span class="c1"># (2)!</span>
 </span><span id="__span-2-36"><a id="__codelineno-2-36" name="__codelineno-2-36" href="#__codelineno-2-36"></a><span class="p">)</span>
 </span></code></pre></div>
 <ol>
 <li>Auto-resolves the latest version in S3 and increments the minor version (e.g. <code>v1.2.0</code> becomes <code>v1.3.0</code>). Options: <code>bumpmajor</code>, <code>bumpminor</code>, <code>bumppatch</code>, <code>keep</code>.</li>
-<li>Controls the scatter/gather tree shape. <code>factor=2</code> means each node fans out to 2 children; <code>max_depth=2</code> limits the recursion depth.</li>
+<li>Controls the scatter/gather tree shape. <code>factor=2</code> means each node fans out to 2 children; <code>max_depth=1</code> limits the recursion depth.</li>
 </ol>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>For most workloads, <code>max_depth=1</code> with a higher branching factor (e.g. <code>factor=32</code>) is preferred over deeper trees. This maximizes parallel dispatch while simplifying deadlock avoidance. See <a href="../../concepts/scatter-gather/#choosing-parameters">Scatter/Gather</a> for guidance.</p>
+</div>
 <p>The <code>allocate</code> call:</p>
 <ul>
 <li>Validates all specs against the registered input type</li>
