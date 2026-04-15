@@ -71,8 +71,8 @@ A scatter/gather node reaches the base case and runs experiments directly when e
 [Benchmarks](https://github.com/szvsw/scythe-benchmark) show that the number of **terminal nodes** (`factor^max_depth`) is the dominant performance driver -- configurations producing the same terminal count perform similarly regardless of tree shape. Based on this:
 
 - For **small experiments** (< 100 specs), use `max_depth=0` (no recursion) -- the root runs all tasks directly.
-- For **most experiments** (100+ specs), use **`max_depth=1`** with a high branching factor (e.g. `factor=32` or higher). This maximizes parallel dispatch while keeping the tree flat and simple. Typically something like 100-500 leaf simulations per terminal scatter/gather node is recommended, though this depends on the size of the simulation payloads to be enqueued.
-- Only increase `max_depth` beyond 1 if the number of child scatter/gather payloads would exceed Hatchet's enqueuing-message payload size limit.
+- For **most experiments** (100+ specs), use **`max_depth=1`** with a high branching factor (e.g. `factor=32` or higher). This maximizes parallel dispatch while keeping the tree flat and simple. Aim for roughly 100–500 leaf simulations per terminal scatter/gather node, though the right number depends on per-simulation payload size.
+- Only increase `max_depth` beyond 1 if the required number of terminal nodes is so large that the branching factor at a single level would exceed Hatchet's batched enqueuing limit. For example, if you need 20,000 terminal nodes to ensure that you enqueue no more than, say, 300 leaf simulation tasks per terminal scatter/gather node, using `factor=20000, max_depth=1` forces the root to enqueue 20,000 child scatter/gather tasks at once. Instead, use `factor=150, max_depth=2` (producing 22,500 terminal nodes) so that no single scatter/gather node enqueues more than 150 children scatter/gather node.
 - The total fan-out capacity at the leaves is `factor^(max_depth)` nodes, each running `N / factor^(max_depth)` experiments.
 
 ### Deadlock Safety
