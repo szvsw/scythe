@@ -297,12 +297,14 @@ class ExperimentOutputSpec(FileReferenceMixin, arbitrary_types_allowed=True):
 
     @field_validator("dataframes", mode="before")
     def validate_dataframes(cls, v):
+        # TODO: this is at risk of blocking the main thread for a long time if there are a lot of dataframes.
         """Validate the dataframes via deserialization."""
 
         def handle_dict(v: dict):
             return pd.DataFrame.from_dict(v, orient="tight")
 
         def handle_uri(v: str, tdir: Path, key: str) -> pd.DataFrame:
+            # TODO: directly read from s3 using read_parquet with the uri.
             lpath = fetch_uri(v, tdir / f"{key}.pq", use_cache=False)
             return pd.read_parquet(lpath)
 
@@ -427,6 +429,7 @@ class ExperimentOutputSpec(FileReferenceMixin, arbitrary_types_allowed=True):
             return
 
         # First, we need to save each of the dataframes to a parquet file
+        # TODO: directly write to s3 using to_parquet with the uri.
         with tempfile.TemporaryDirectory() as tmpdir:
             tdir = Path(tmpdir)
             local_paths: dict[str, Path] = {}

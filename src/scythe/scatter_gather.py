@@ -1,10 +1,9 @@
 """Fanout Handling."""
 
+import asyncio
 import logging
-import tempfile
 from concurrent.futures import ThreadPoolExecutor
 from functools import cached_property, partial
-from pathlib import Path
 from typing import TYPE_CHECKING, Literal, TypeVar
 
 import pandas as pd
@@ -23,9 +22,11 @@ from scythe.registry import (
 )
 from scythe.settings import ScytheStorageSettings, timeout_settings
 from scythe.utils import log_interval
-from scythe.utils.filesys import S3Url, fetch_uri
-from scythe.utils.results import save_and_upload_parquets, transpose_dataframe_dict
-from scythe.utils.s3 import s3_client as s3
+from scythe.utils.filesys import S3Url
+from scythe.utils.results import (
+    save_and_upload_parquets,
+    transpose_dataframe_dict,
+)
 
 if TYPE_CHECKING:
     from mypy_boto3_s3.client import S3Client
@@ -144,7 +145,7 @@ class ScatterGatherInput(BaseSpec):
         return runnable
 
     @cached_property
-    def specs(self) -> list[ExperimentInputSpec]:
+    def validated_specs(self) -> list[ExperimentInputSpec]:
         """Fetch the specs and convert to the input type."""
         local_path = self.fetch_uri(self.specs_uri, use_cache=True)
         df = pd.read_parquet(local_path)
@@ -161,46 +162,77 @@ class ScatterGatherInput(BaseSpec):
         logger.info("Finished validating %d specs", n)
         return specs
 
+    def _specs(self) -> list[ExperimentInputSpec]:
+        """A wrapper around the cached property to allow for non-blocking access via asyncio.to_thread."""
+        return self.validated_specs
+
+    @property
+    async def specs(self) -> list[ExperimentInputSpec]:
+        """Fetch the specs and convert to the input type in a non-blocking way."""
+        return await asyncio.to_thread(self._specs)
+
     def add_root_workflow_run_id(self, root_workflow_run_id: str) -> None:
         """Add the root workflow run id to the specs."""
         if self.recursion_map.is_root:
-            for spec in self.specs:
+            for spec in self.validated_specs:
                 spec.root_workflow_run_id = root_workflow_run_id
+
+    def create_bulk_run_experiment_specs(
+        self, specs: list[ExperimentInputSpec]
+    ) -> tuple[list[WorkflowRunTriggerConfig], list[ExperimentInputSpec]]:
+        """Create bulk run item configs for a list of experiment specs."""
+        log_n = log_interval(len(specs))
+        inputs: list[WorkflowRunTriggerConfig] = []
+        for i, spec in tqdm(
+            enumerate(specs), desc="Converting specs to bulk run item configs"
+        ):
+            spec.storage_settings = self.storage_settings
+            inp = self.standalone.create_bulk_run_item(
+                input=spec,
+                options=TriggerWorkflowOptions(
+                    additional_metadata={"index": i, "sort_index": spec.sort_index},
+                ),
+            )
+            inputs.append(inp)
+            if (i + 1) % log_n == 0:
+                logger.info(
+                    "Converted %d/%d specs to bulk run item configs", i + 1, len(specs)
+                )
+
+        return inputs, specs
 
     async def run_experiments(
         self,
     ) -> GatheredExperimentRuns:
         """Run the actual experiments and collect results."""
-        specs = self.specs
+        specs = await self.specs
         n = len(specs)
         logger.info("Preparing %d experiment inputs for %s", n, self.task_name)
-        for spec in specs:
-            spec.storage_settings = self.storage_settings
-        inputs = [
-            self.standalone.create_bulk_run_item(
-                input=spec,
-                options=TriggerWorkflowOptions(
-                    additional_metadata={"index": i},
-                ),
-            )
-            for i, spec in enumerate(specs)
-        ]
+
+        inputs, specs = await asyncio.to_thread(
+            self.create_bulk_run_experiment_specs, specs
+        )
+
         logger.info("Dispatching %d experiments via aio_run_many", n)
         # since we don't have a way to get the individual workflow run ids,
         # we can't associate specific results (or errors) with specific results
         results = await self.standalone.aio_run_many(inputs, return_exceptions=True)
-        safe_results, error_df = sift_results(specs, results)
-        result = combine_experiment_outputs(safe_results)
+        logger.info("Finished running %d experiments", n)
+        safe_results, error_df = await asyncio.to_thread(sift_results, specs, results)
+        logger.info("Combining %d successful results", len(safe_results))
+        result = await asyncio.to_thread(combine_experiment_outputs, safe_results)
+        logger.info("Finished combining results")
+
         return GatheredExperimentRuns(
             success=result,
             errors=error_df,
         )
 
-    def create_recursion_payloads(
+    async def create_recursion_payloads(
         self, parent_workflow_run_id: str
     ) -> tuple[list[WorkflowRunTriggerConfig], list["ScatterGatherInput"]]:
         """Splits up the specs into a list of children scatter gather payloads for recursion."""
-        specs = self.specs
+        specs = await self.specs
         factor = self.recursion_map.factor
         depth = len(self.recursion_map.path or [])
         logger.info(
@@ -210,6 +242,7 @@ class ScatterGatherInput(BaseSpec):
             depth,
         )
         children_payloads: list[ScatterGatherInput] = []
+        log_n = log_interval(factor)
         for branch_ix in range(factor):
             new_path = self.recursion_map.path.copy() if self.recursion_map.path else []
             new_path.append(
@@ -225,11 +258,11 @@ class ScatterGatherInput(BaseSpec):
                 spec.model_dump(mode="json") for spec in specs_to_use
             ])
             filename = f"specs_{branch_ix:06d}"
-            uris = save_and_upload_parquets(
+            uris = await asyncio.to_thread(
+                save_and_upload_parquets,
                 collected_dfs={
                     filename: specs_as_df,
                 },
-                s3=s3,
                 bucket=self.storage_settings.BUCKET,
                 output_key_constructor=partial(
                     self.construct_filekey,
@@ -237,6 +270,7 @@ class ScatterGatherInput(BaseSpec):
                     workflow_run_id=parent_workflow_run_id,
                     suffix="pq",
                 ),
+                log=((branch_ix + 1) % log_n) == 0,
             )
             payload = ScatterGatherInput(
                 experiment_id=self.experiment_id,
@@ -272,7 +306,7 @@ class ScatterGatherInput(BaseSpec):
     @property
     def is_base_case(self) -> bool:
         """Check if the current payload is a base case, i.e. no recursion needed."""
-        too_few_specs = len(self.specs) <= self.recursion_map.factor
+        too_few_specs = len(self.validated_specs) <= self.recursion_map.factor
         past_max_depth = (
             (len(self.recursion_map.path) >= self.recursion_map.max_depth)
             if self.recursion_map.path
@@ -286,7 +320,7 @@ class ScatterGatherInput(BaseSpec):
     ) -> list[GatheredExperimentRuns]:
         """Run the experiments if not a base case, otherwise recurse."""
         self.add_root_workflow_run_id(ctx.workflow_run_id)
-        n_specs = len(self.specs)
+        n_specs = len(await self.specs)
         depth = len(self.recursion_map.path or [])
 
         if self.is_base_case:
@@ -303,24 +337,43 @@ class ScatterGatherInput(BaseSpec):
                 self.recursion_map.factor,
                 depth,
             )
-            trigs, children_specs = self.create_recursion_payloads(ctx.workflow_run_id)
+            trigs, children_specs = await self.create_recursion_payloads(
+                ctx.workflow_run_id
+            )
             results = await scatter_gather.aio_run_many(trigs, return_exceptions=True)
             safe_results, _error_df = sift_results(children_specs, results)
 
-            def gather_experiment_outputs(
-                r: ScatterGatherResult,
-            ) -> GatheredExperimentRuns | None:
-                try:
-                    return r.to_gathered_experiment_runs()
-                except Exception:
-                    logger.exception("Error gathering experiment outputs")
-                    return None
+            logger.info(
+                "Beginning to gather outputs from %d children scatter_gather tasks",
+                len(safe_results),
+            )
+            experiment_outputs = await asyncio.to_thread(
+                self.gather_outputs, safe_results
+            )
+            logger.info(
+                "Finished gathering outputs from %d children scatter_gather tasks",
+                len(experiment_outputs),
+            )
+        return experiment_outputs
 
-            with ThreadPoolExecutor(max_workers=8) as executor:
-                experiment_outputs = list(
-                    executor.map(gather_experiment_outputs, safe_results)
-                )
-            experiment_outputs = [r for r in experiment_outputs if r is not None]
+    def gather_outputs(
+        self, results: list["ScatterGatherResult"]
+    ) -> list[GatheredExperimentRuns]:
+        """Gather the experiment outputs from a list of scatter gather results."""
+
+        def gather_experiment_outputs(
+            r: ScatterGatherResult,
+        ) -> GatheredExperimentRuns | None:
+            try:
+                return r.to_gathered_experiment_runs()
+            except Exception:
+                logger.exception("Error gathering experiment outputs")
+                return None
+
+        with ThreadPoolExecutor(max_workers=8) as executor:
+            experiment_outputs = list(executor.map(gather_experiment_outputs, results))
+
+        experiment_outputs = [r for r in experiment_outputs if r is not None]
         return experiment_outputs
 
 
@@ -336,11 +389,11 @@ class ScatterGatherResult(BaseModel):
             item: tuple[str, S3Url],
         ) -> tuple[str, pd.DataFrame] | tuple[str, None]:
             k, v = item
+            # Temporary hotfix for massive dataframe from GloBI
+            if "ConsecutiveExceedances" in k:
+                return k, None
             try:
-                with tempfile.TemporaryDirectory() as tmpdir:
-                    f = Path(tmpdir) / "specs.parquet"
-                    res_path = fetch_uri(uri=v, local_path=f, use_cache=False)
-                    return k, pd.read_parquet(res_path)
+                return k, pd.read_parquet(str(v))
             except Exception:
                 return k, None
 
@@ -383,16 +436,19 @@ async def scatter_gather(
     logger.info("Combining %d experiment output groups", len(experiment_outputs))
     dfs = [r.success.dataframes for r in experiment_outputs]
     errors = [r.errors for r in experiment_outputs if r.errors is not None]
-    transposed_dfs = transpose_dataframe_dict(dfs)
+    transposed_dfs = await asyncio.to_thread(transpose_dataframe_dict, dfs)
 
     if errors:
-        error_dfs = pd.concat(errors, axis=0)
+        logger.info("Combining %d error dataframes", len(errors))
+        error_dfs = await asyncio.to_thread(pd.concat, errors, axis=0)
         if "errors" in transposed_dfs:
-            transposed_dfs["errors"] = pd.concat(
-                [transposed_dfs["errors"], error_dfs], axis=0
+            transposed_dfs["errors"] = await asyncio.to_thread(
+                pd.concat, [transposed_dfs["errors"], error_dfs], axis=0
             )
         else:
-            transposed_dfs["errors"] = error_dfs
+            transposed_dfs["errors"] = await asyncio.to_thread(
+                pd.concat, [error_dfs], axis=0
+            )
 
     output_key_constructor = partial(
         payload.construct_filekey,
@@ -402,13 +458,14 @@ async def scatter_gather(
     )
 
     logger.info("Uploading %d result parquets", len(transposed_dfs))
-    uris = save_and_upload_parquets(
+    uris = await asyncio.to_thread(
+        save_and_upload_parquets,
         collected_dfs=transposed_dfs,
-        s3=s3,
         bucket=payload.storage_settings.BUCKET,
         output_key_constructor=output_key_constructor,
         save_errors=payload.save_errors,
     )
+    logger.info("Uploaded %d result parquets", len(uris))
 
     if payload.is_root:
         logger.info("Root node: uploading final result parquets")
@@ -418,9 +475,9 @@ async def scatter_gather(
             workflow_run_id=ctx.workflow_run_id,
             suffix="pq",
         )
-        uris = save_and_upload_parquets(
+        uris = await asyncio.to_thread(
+            save_and_upload_parquets,
             collected_dfs=transposed_dfs,
-            s3=s3,
             bucket=payload.storage_settings.BUCKET,
             output_key_constructor=output_key_constructor,
             save_errors=payload.save_errors,

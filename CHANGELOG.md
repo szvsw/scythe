@@ -5,7 +5,43 @@ All notable changes to **scythe-engine** are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.3.0] - Unreleased
+## [1.3.1] - Unreleased
+
+### Added
+
+- `ScatterGatherInput.validated_specs` cached property for synchronous spec
+  access (replaces the previous synchronous `specs` property).
+- `ScatterGatherInput.create_bulk_run_experiment_specs()` method for preparing
+  bulk-run trigger configs from a list of specs.
+- `ScatterGatherInput.gather_outputs()` method for collecting results from
+  child scatter/gather tasks using a thread pool.
+- `log` parameter on `save_and_upload_parquets()` to control per-file upload
+  logging.
+
+### Changed
+
+- **BREAKING** `ScatterGatherInput.specs` is now an async property; use
+  `validated_specs` for synchronous access.
+- Scatter/gather operations offload blocking I/O and CPU-heavy work to
+  background threads via `asyncio.to_thread()`, preventing event-loop
+  starvation during spec validation, result sifting, result combining,
+  parquet uploads, and error concatenation.
+- `ScatterGatherResult` now reads parquet files directly from S3 URLs via
+  PyArrow instead of downloading to temporary files.
+- `save_and_upload_parquets()` writes DataFrames directly to S3 via
+  `df.to_parquet(uri)` instead of writing to temp files and uploading with
+  the S3 client.
+- `fetch_uri()` log messages downgraded from `info` to `debug` to reduce
+  noise during bulk operations.
+- `sort_index` is now included in `additional_metadata` when dispatching
+  bulk experiment runs.
+
+### Removed
+
+- **BREAKING** `s3` parameter from `save_and_upload_parquets()`. The S3
+  client is no longer needed as PyArrow handles S3 writes natively.
+
+## [1.3.0] - 2026-04-09
 
 ### Added
 
@@ -87,6 +123,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Deferred `hatchet` client import in `ScytheWorkerConfig.start()` to avoid
   import-time side effects.
 
-[1.3.0]: https://github.com/szvsw/scythe/compare/v1.2.0...HEAD
+[1.3.1]: https://github.com/szvsw/scythe/compare/v1.3.0...HEAD
+[1.3.0]: https://github.com/szvsw/scythe/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/szvsw/scythe/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/szvsw/scythe/compare/v1.0.0...v1.1.0
