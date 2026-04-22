@@ -68,6 +68,16 @@ class RecursionMap(BaseModel):
     max_depth: int = Field(
         default=10, description="The maximum depth of the recursion", ge=0, le=10
     )
+    collect_from_depth: int = Field(
+        default=0,
+        description=(
+            "The minimum recursion depth at which nodes should materialize child "
+            "dataframes. Nodes shallower than this depth aggregate lightweight "
+            "URI references instead."
+        ),
+        ge=0,
+        le=10,
+    )
 
     @property
     def is_root(self) -> bool:
@@ -91,6 +101,10 @@ class GatheredExperimentRuns(BaseModel, arbitrary_types_allowed=True):
     # TODO: make success a little more extensible?
     success: ExperimentOutputSpec
     errors: pd.DataFrame | None
+
+
+SCYTHE_DATAFRAME_REFERENCES_KEY = "_scythe_dataframe_references"
+SCYTHE_DATAFRAME_REFERENCE_COLUMNS = ("dataframe_key", "uri")
 
 
 class ScatterGatherInput(BaseSpec):
@@ -219,6 +233,7 @@ class ScatterGatherInput(BaseSpec):
                 path=new_path,
                 factor=self.recursion_map.factor,
                 max_depth=self.recursion_map.max_depth,
+                collect_from_depth=self.recursion_map.collect_from_depth,
             )
             specs_to_use = specs[branch_ix :: self.recursion_map.factor]
             specs_as_df = pd.DataFrame([
@@ -280,6 +295,16 @@ class ScatterGatherInput(BaseSpec):
         ) or self.recursion_map.max_depth == 0
         return too_few_specs or past_max_depth
 
+    @property
+    def depth(self) -> int:
+        """Get the current depth within the recursion tree."""
+        return len(self.recursion_map.path or [])
+
+    @property
+    def should_materialize_collection(self) -> bool:
+        """Whether this node should fetch and combine child dataframes."""
+        return self.depth >= self.recursion_map.collect_from_depth
+
     async def run_or_recurse(
         self,
         ctx: Context,
@@ -287,7 +312,7 @@ class ScatterGatherInput(BaseSpec):
         """Run the experiments if not a base case, otherwise recurse."""
         self.add_root_workflow_run_id(ctx.workflow_run_id)
         n_specs = len(self.specs)
-        depth = len(self.recursion_map.path or [])
+        depth = self.depth
 
         if self.is_base_case:
             logger.info(
@@ -306,12 +331,22 @@ class ScatterGatherInput(BaseSpec):
             trigs, children_specs = self.create_recursion_payloads(ctx.workflow_run_id)
             results = await scatter_gather.aio_run_many(trigs, return_exceptions=True)
             safe_results, _error_df = sift_results(children_specs, results)
+            materialize_collection = self.should_materialize_collection
+            logger.info(
+                "Gather strategy at depth=%d: %s",
+                depth,
+                "materialize-dataframes"
+                if materialize_collection
+                else "references-only",
+            )
 
             def gather_experiment_outputs(
                 r: ScatterGatherResult,
             ) -> GatheredExperimentRuns | None:
                 try:
-                    return r.to_gathered_experiment_runs()
+                    if materialize_collection:
+                        return r.to_gathered_experiment_runs()
+                    return r.to_reference_gathered_experiment_runs()
                 except Exception:
                     logger.exception("Error gathering experiment outputs")
                     return None
@@ -328,6 +363,43 @@ class ScatterGatherResult(BaseModel):
     """The result of the scatter gather workflow."""
 
     uris: dict[str, S3Url]
+
+    @staticmethod
+    def _is_reference_dataframe(df: pd.DataFrame) -> bool:
+        """Check whether a dataframe has the expected reference schema."""
+        return set(SCYTHE_DATAFRAME_REFERENCE_COLUMNS).issubset(df.columns)
+
+    def _to_reference_dataframe_from_uris(self) -> pd.DataFrame:
+        """Convert URI mappings into a serializable reference dataframe."""
+        return pd.DataFrame(
+            [
+                {
+                    "dataframe_key": dataframe_key,
+                    "uri": str(uri),
+                }
+                for dataframe_key, uri in self.uris.items()
+            ],
+            columns=list(SCYTHE_DATAFRAME_REFERENCE_COLUMNS),
+        )
+
+    def _try_read_reference_dataframe(self, uri: S3Url) -> pd.DataFrame | None:
+        """Try reading an existing reference dataframe from a parquet URI."""
+        try:
+            with tempfile.TemporaryDirectory() as tmpdir:
+                f = Path(tmpdir) / "scythe_dataframe_refs.parquet"
+                res_path = fetch_uri(uri=uri, local_path=f, use_cache=False)
+                df = pd.read_parquet(res_path)
+                if not self._is_reference_dataframe(df):
+                    logger.warning(
+                        "Reference parquet at %s missing required columns %s",
+                        uri,
+                        SCYTHE_DATAFRAME_REFERENCE_COLUMNS,
+                    )
+                    return None
+                return df.loc[:, list(SCYTHE_DATAFRAME_REFERENCE_COLUMNS)]
+        except Exception:
+            logger.exception("Failed to read reference dataframe from %s", uri)
+            return None
 
     def to_gathered_experiment_runs(self) -> GatheredExperimentRuns:
         """Convert the scatter gather result to a gathered experiment runs."""
@@ -357,6 +429,53 @@ class ScatterGatherResult(BaseModel):
         return GatheredExperimentRuns(
             success=ExperimentOutputSpec(
                 dataframes=dfs,
+            ),
+            errors=None,
+        )
+
+    def to_reference_gathered_experiment_runs(self) -> GatheredExperimentRuns:
+        """Convert the result to a URI reference dataframe.
+
+        If this result already points to a reference dataframe generated by a deeper
+        node, this method reads and forwards that dataframe so URI references remain
+        flattened across multiple non-materializing levels.
+        """
+        reference_uri = self.uris.get(SCYTHE_DATAFRAME_REFERENCES_KEY)
+        rows: list[dict[str, str]] = []
+        if reference_uri:
+            reference_df = self._try_read_reference_dataframe(reference_uri)
+            if reference_df is not None:
+                rows.extend(
+                    [
+                        {
+                            "dataframe_key": str(dataframe_key),
+                            "uri": str(uri),
+                        }
+                        for dataframe_key, uri in zip(
+                            reference_df["dataframe_key"],
+                            reference_df["uri"],
+                            strict=True,
+                        )
+                    ]
+                )
+        rows.extend(
+            [
+                {
+                    "dataframe_key": dataframe_key,
+                    "uri": str(uri),
+                }
+                for dataframe_key, uri in self.uris.items()
+                if dataframe_key != SCYTHE_DATAFRAME_REFERENCES_KEY
+            ]
+        )
+        reference_df = (
+            pd.DataFrame(rows, columns=list(SCYTHE_DATAFRAME_REFERENCE_COLUMNS))
+            if rows
+            else self._to_reference_dataframe_from_uris()
+        )
+        return GatheredExperimentRuns(
+            success=ExperimentOutputSpec(
+                dataframes={SCYTHE_DATAFRAME_REFERENCES_KEY: reference_df}
             ),
             errors=None,
         )
