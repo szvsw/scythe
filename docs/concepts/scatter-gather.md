@@ -57,6 +57,7 @@ recursion_map = RecursionMap(
 | ----------- | --------------------------------------------------------------------------------------------------- |
 | `factor`    | The branching factor -- how many children each scatter/gather node creates.                         |
 | `max_depth` | The maximum recursion depth. At depth 0, the root node runs experiments directly with no recursion. |
+| `collect_from_depth` | The minimum depth at which a node materializes child dataframes. Shallower nodes keep URI references only. Default `0` (collect all the way to root). |
 | `path`      | (Internal) Tracks the current position in the recursion tree. You do not set this directly.         |
 
 ### Base Case
@@ -65,6 +66,32 @@ A scatter/gather node reaches the base case and runs experiments directly when e
 
 - The number of remaining specs is less than or equal to `factor`
 - The current recursion depth has reached `max_depth`
+
+### Configurable Collection Depth
+
+By default, Scythe fully gathers to the root (`collect_from_depth=0`), materializing and concatenating DataFrames at every level.
+
+For very large runs, you can reduce gather-time memory pressure by setting `collect_from_depth` to a deeper level:
+
+- Nodes at depth **>= `collect_from_depth`** gather child DataFrames normally.
+- Nodes at depth **< `collect_from_depth`** avoid reading child parquet payloads and instead aggregate URI references.
+
+Example (`factor=3`, `max_depth=2`):
+
+- `collect_from_depth=0` (default): full gather to one final parquet per dataframe key.
+- `collect_from_depth=1`: root stores references to the 3 depth-1 outputs.
+- `collect_from_depth=2`: depth-0 and depth-1 nodes store references; root points to depth-2 terminal outputs.
+
+When collection is stopped above the root, the root still returns a usable result via a special reference dataframe key:
+
+- `_scythe_dataframe_references.pq`
+
+This dataframe includes two columns:
+
+- `dataframe_key` (e.g. `scalars`, `result_file_refs`, user dataframe names)
+- `uri` (S3 URI to the parquet file)
+
+This gives you a stable root artifact that can be traversed later (for selective downloads, Athena-driven querying, etc.) without forcing full in-memory recombination at upper levels.
 
 ### Choosing Parameters
 

@@ -138,9 +138,22 @@ run, ref = experiment.allocate(
     version="bumpminor",
     recursion_map=RecursionMap(factor=100, max_depth=2),
 )
+
+# Keep full fan-out, but avoid materializing child frames at root depth
+run, ref = experiment.allocate(
+    specs,
+    version="bumpminor",
+    recursion_map=RecursionMap(factor=3, max_depth=2, collect_from_depth=1),
+)
 ```
 
 When `recursion_map` is not specified, the default is `RecursionMap(factor=10, max_depth=0)` (no recursion, factor ignored).
+
+`collect_from_depth` controls where fan-in begins:
+
+- Default `collect_from_depth=0`: full materialization to root (existing behavior)
+- `collect_from_depth=1`: root stores a reference dataframe (`_scythe_dataframe_references`) that lists child parquet URIs instead of loading/concatenating all child dataframes
+- Larger values delay dataframe materialization deeper into the tree and can reduce gather-memory pressure on upper levels
 
 !!! tip "Prefer `max_depth=1` with a high branching factor"
     [Benchmarks](https://github.com/szvsw/scythe-benchmark) show that the number of terminal nodes (`factor^max_depth`) is the dominant throughput driver. Using `max_depth=1` with a high factor (e.g. 32+) maximizes parallelism while keeping deadlock avoidance trivial (only one scatter/gather slot needed). Only increase `max_depth` if the required terminal scatter/gather-node count is so large that a single scatter/gather node at levels of the tree closer to the root would exceed Hatchet's batched enqueuing limit when enqueueing the next level of the tree. See [Scatter/Gather Concepts](../concepts/scatter-gather.md#choosing-parameters) for details.
